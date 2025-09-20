@@ -121,56 +121,58 @@ async def build_graph() -> StateGraph:
     refiner = refine_prompt | llm | StrOutputParser()
 
     async def chatbot(state: State):
-        user_msg = state["messages"][-1].content
+        last_msg = state["messages"][-1]
 
-        # 1. Rule-Snippets aus dem VectorStore holen
-        retrieved_docs = await retriever.ainvoke(user_msg)
-        rules_context = "\n\n".join([d.page_content for d in retrieved_docs])
+        if isinstance(last_msg, HumanMessage):
+            # 1. Rule-Snippets aus dem VectorStore holen
+            retrieved_docs = await retriever.ainvoke(last_msg.content)
+            rules_context = "\n\n".join([d.page_content for d in retrieved_docs])
 
-        # Refine user query using master rule
-        refined_user_msg = await refiner.ainvoke({
-            "user_input": user_msg,
-            "master_rule": dynatrace_master_rules
-        })
+            refined_user_msg = await refiner.ainvoke({
+                "user_input": last_msg.content,
+                "master_rule": dynatrace_master_rules
+            })
 
-        # 2. System-Prompt mit Rules + Standardhinweis
-        system_prompt = SystemMessage(
-            content=(
-                "You are a Dynatrace observability assistant.\n"
-                "You have access to MCP tools: verify_dql, execute_dql, generate_dql_from_natural_language, "
-                "list_problems, list_vulnerabilities, get_entity_details, get_environment_info, send_slack_message, etc.\n\n"
+            system_prompt = SystemMessage(
+                content=(
+                    "You are a Dynatrace observability assistant.\n"
+                    "You have access to MCP tools: verify_dql, execute_dql, generate_dql_from_natural_language, "
+                    "list_problems, list_vulnerabilities, get_entity_details, get_environment_info, send_slack_message, etc.\n\n"
 
-                "### Core Rules\n"
-                "- Always verify queries with verify_dql BEFORE executing them.\n"
-                "- Never use 'for' after fetch. Correct patterns are:\n"
-                "    fetch logs | filter entity.id == \"<ENTITY_ID>\" | limit 10\n"
-                "    fetch spans | filter service.name == \"<NAME>\" | limit 10\n"
-                "    fetch metric.series | filter startsWith(metric.key, \"dt.service\") | limit 10\n"
-                "- If verify_dql shows a syntax error → fix automatically.\n"
-                "- If execute_dql returns an empty response:\n"
-                "    1. Retry with larger timeframes (24h → 7d).\n"
-                "    2. Relax filters (e.g. remove specific pod names, broaden entity scope).\n"
-                "    3. Switch data source (logs → spans → events) if relevant.\n"
-                "- Always include span.events when investigating failed services.\n\n"
+                    "### Core Rules\n"
+                    "- Always verify queries with verify_dql BEFORE executing them.\n"
+                    "- Never use 'for' after fetch. Correct patterns are:\n"
+                    "    fetch logs | filter entity.id == \"<ENTITY_ID>\" | limit 10\n"
+                    "    fetch spans | filter service.name == \"<NAME>\" | limit 10\n"
+                    "    fetch metric.series | filter startsWith(metric.key, \"dt.service\") | limit 10\n"
+                    "- If verify_dql shows a syntax error → fix automatically.\n"
+                    "- If execute_dql returns an empty response:\n"
+                    "    1. Retry with larger timeframes (24h → 7d).\n"
+                    "    2. Relax filters (e.g. remove specific pod names, broaden entity scope).\n"
+                    "    3. Switch data source (logs → spans → events) if relevant.\n"
+                    "- Always include span.events when investigating failed services.\n\n"
 
-                "### Error Handling Strategy\n"
-                "Never just return an empty result.\n"
-                "If no results are found:\n"
-                " - Suggest and try alternative DQL automatically.\n"
-                " - Explain to the user what adjustments you made.\n"
-                " - Only stop if absolutely no useful data is available.\n\n"
+                    "### Error Handling Strategy\n"
+                    "Never just return an empty result.\n"
+                    "If no results are found:\n"
+                    " - Suggest and try alternative DQL automatically.\n"
+                    " - Explain to the user what adjustments you made.\n"
+                    " - Only stop if absolutely no useful data is available.\n\n"
 
-                "### Reference Knowledge\n"
-                f"{dynatrace_master_rules}\n\n"
-                f"{rules_context}\n\n"
+                    "### Reference Knowledge\n"
+                    f"{dynatrace_master_rules}\n\n"
+                    f"{rules_context}\n\n"
 
-                "The user query follows below."
-            )
-        )
+                    "The user query follows below."
+                )
+            )  
 
-        full_state = {"messages": [system_prompt] + [HumanMessage(content=refined_user_msg)]}
-        print(f"DEBUG: user_prompt: {user_msg}")
-        print(f"DEBUG: refined_user_prompt: {refined_user_msg}")
+            full_state = {"messages": [system_prompt, HumanMessage(content=refined_user_msg)]}
+            print(f"DEBUG: refined_user_prompt: {refined_user_msg}")
+        else:
+            # Don’t refine non-user messages
+            full_state = {"messages": state["messages"]}
+
         response = await llm_with_tools.ainvoke(full_state["messages"])
         return {"messages": [response]}
 
@@ -193,7 +195,7 @@ async def run_cli(graph: StateGraph) -> None:
     async def stream_graph_updates(user_input: str):
         async for event in graph.astream({"messages": [{"role": "user", "content": user_input}]}):
             for value in event.values():
-                print(f"Assistant: {value["messages"][-1].content}")
+                print(f"Assistant: {value['messages'][-1].content}")
 
     while True:
         try:
