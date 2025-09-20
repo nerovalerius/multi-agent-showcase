@@ -1,48 +1,50 @@
-# LLM Showcase 
+# Dynatrace Multi-Agent Chat Showcase  
 
-This repository is my portfolio of **Large Language Model (LLM) projects and experiments**.  
-It demonstrates how I design, build, and deploy modern LLM-based AI systems:  
-- from **prompt engineering** and **LangGraph agent flows**  
-- to **retrieval-augmented generation (RAG)**  
-- to **fine-tuning LLMs** (full, PEFT, LoRA/QLoRA)  
-- to **containerized deployments** on **Azure ML** and edge devices.  
+This project demonstrates a **multi-agent system** built with **LangGraph** and a **chat GUI** (Streamlit) that connects to the **Dynatrace MCP Server** to retrieve data such as logs, problems, and vulnerabilities.  
 
-With a strong background in **AI engineering, data science, and scalable deployment**, I focus on **reproducible, production-ready pipelines** that bridge research and real-world applications.  
+The focus is to provide **application owners** with clear insights into what data is available, how issues can be identified, and what **actionable recommendations** can be derived.  
 
 ---
 
-## 🔎 What’s Inside  
+## 🔎 Features  
 
-- **Prompt Engineering** – best practices & practical examples  
-- **RAG Pipelines** – document Q&A with FAISS/Chroma  
-- **LangGraph Flows** – modular conversational agents with tool integration  
-- **LLM Fine-Tuning** – full training & parameter-efficient methods (LoRA, QLoRA, PEFT)  
-- **MLOps & Deployment** – Dockerized workflows, Azure ML pipelines, DevOps integration  
+- **Supervisor Agent** – orchestrates specialized agents and compiles a comprehensive report  
+- **Problem Agent** – fetches open problems from Dynatrace  
+- **Vulnerability Agent** – lists open security problems and vulnerabilities  
+- **Logs Agent** – queries relevant log entries via DQL in Grail  
+- **Actionable Reports** – condenses findings into clear, actionable outputs  
 
 ---
 
 ## 🛠️ Tech Stack  
 
-- **Languages & Libraries:** Python, PyTorch, pandas, LangChain, LangGraph, Hugging Face  
-- **LLMs:** OpenAI (via API & Azure), Hugging Face models, fine-tuned models  
-- **Apps & Interfaces:** Streamlit, FastAPI  
-- **Deployment:** Docker, Azure ML, Azure DevOps  
+- **Agent Framework:** LangGraph (with Checkpointer for conversation)  
+- **MCP Integration:** dynatrace-mcp-server (Problems, Vulnerabilities, Logs via DQL)  
+- **LLMs:** OpenAI GPT (Azure/OpenAI API)  
+- **Chat GUI:** Streamlit (interactive conversation)  
+- **Deployment:** Docker (optional packaging), local execution supported  
 
 ---
 
-## 📂 Structure  
+## 🚀 Use Case  
 
-```text
-llm-showcase/
-│── README.md
-│── requirements.txt
-│── notebooks/
-│   ├── 01_prompting_basics.ipynb
-│   ├── 02_rag_pipeline.ipynb
-│   ├── 03_langgraph_agents.ipynb
-│   └── 04_finetuning_llms.ipynb
-│── apps/
-│   ├── streamlit_chatbot/
-│   └── langgraph_flow/
-│── utils/
-│   └── data_utils.py
+1. The user starts a **chat session** with the system.  
+2. They ask, for example: *“What open problems are there right now?”*  
+3. The Supervisor Agent delegates the request to the specialized agents.  
+4. Problems, vulnerabilities, and logs are retrieved via MCP.  
+5. The system presents an **Actionable Report** containing:  
+   - Problem/Vulnerability  
+   - Affected services/entities  
+   - Relevant logs  
+   - Concrete mitigation steps  
+
+---
+
+## 🎯 Goal  
+
+An **interactive, easy-to-understand multi-agent system** for Dynatrace that:  
+- Collects and correlates monitoring data  
+- Provides understandable insights for application owners  
+- Delivers outputs in a **chat interface**  
+
+---

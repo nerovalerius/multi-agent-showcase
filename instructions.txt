@@ -1,0 +1,6 @@
+# init uv project in a folder
+uv init
+uv python install 3.13
+uv pythin pin 3.13
+uv sync
+uv run python -V # check version
