@@ -6,12 +6,12 @@ from dotenv import load_dotenv
 from typing import Annotated
 from typing_extensions import TypedDict
 
-
+from langgraph.checkpoint.memory import MemorySaver
 from langchain_openai import OpenAIEmbeddings
+from langchain_core.messages import ToolMessage, AIMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from langgraph.prebuilt import ToolNode
 from langchain.chat_models import init_chat_model
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -24,7 +24,8 @@ from langgraph.prebuilt import create_react_agent
 
 env_path = Path(__file__).resolve().parents[2] / ".env"
 dynatrace_rules_dir = Path(__file__).resolve().parents[2] / "dynatrace_rules"
-dynatrace_master_rules = dynatrace_rules_dir / "DynatraceMcpIntegration.md"
+dynatrace_master_rules = (dynatrace_rules_dir / "DynatraceMcpIntegration.md").read_text(encoding="utf-8")
+dynatrace_query_rules = (dynatrace_rules_dir / "reference" / "DynatraceQueryLanguage.md").read_text(encoding="utf-8")
 
 load_dotenv(dotenv_path=env_path, override=True)
 DT_ENVIRONMENT = os.getenv("DT_ENVIRONMENT")
@@ -91,89 +92,111 @@ async def build_graph() -> StateGraph:
     def should_continue(state: State):
         messages = state["messages"]
         last_message = messages[-1]
-        if last_message.tool_calls:
+
+        if isinstance(last_message, AIMessage) and getattr(last_message, "tool_calls", None):
             return "tools"
         return END
 
     tools = await client.get_tools()
     tool_node = ToolNode(tools)
 
-    llm = init_chat_model("gpt-4o-mini")
+    # print(tool_node)
+
+    llm = init_chat_model("gpt-5-mini", model_provider="openai")
     llm_with_tools =  llm.bind_tools(tools)
 
     refine_prompt = ChatPromptTemplate.from_messages([
-    ("system",
-     "You are a prompt refiner for Dynatrace Observability.\n"
-     "You take a raw user query and rewrite it into a clear, precise instruction for the Dynatrace MCP agent.\n\n"
-     "Requirements:\n"
-     "- Use the Dynatrace Master Rule as the source of truth.\n"
-     "- Do NOT generate DQL directly. Instead, clarify intent in natural language for the agent.\n"
-     "- Always specify the data source (logs, spans, events, metrics).\n"
-     "- Add a reasonable timeframe (default: from:now()-24h) if not specified.\n"
-     "- Include entity IDs or names if provided.\n"
-     "- Emphasize that queries must be verified with `verify_dql` before `execute_dql`.\n"
-     "- Never mention `for` after `fetch` (this is a forbidden pattern).\n"
-     "- Return only the refined prompt, no explanations.\n\n"
-     "Dynatrace Master Rule:\n{master_rule}\n"),
-    ("user", "{user_input}")
+        ("system",
+        "You are a prompt refiner for Dynatrace Observability.\n"
+        "You take a raw user query and rewrite it into a clear, precise instruction for the Dynatrace MCP agent.\n\n"
+        "Requirements:\n"
+        "- Use the Dynatrace Master Rule as the source of truth.\n"
+        "- Do NOT generate DQL directly. Instead, clarify intent in natural language for the agent.\n"
+        "- Always specify the data source (logs, spans, events, metrics).\n"
+        "- Add a reasonable timeframe (default: from:now()-24h) if not specified.\n"
+        "- Include entity IDs or names if provided.\n"
+        "- Emphasize that queries must be verified with `verify_dql` before `execute_dql`.\n"
+        "- Never mention `for` after `fetch` (this is a forbidden pattern).\n"
+        "- Return only the refined prompt, no explanations.\n\n"
+        "- If the user request is about summarization, reformulation, explanation, or formatting (e.g. 'convert to JSON'), "
+        "then do NOT insert tool-usage instructions. Just refine the request as a plain natural-language instruction.\n\n"
+        "### Reference Knowledge\n"
+        "{dt_master_rules}\n\n"
+        "{dt_query_rules}\n\n"),
+        ("user", "{user_input}")
     ])
 
     refiner = refine_prompt | llm | StrOutputParser()
 
     async def chatbot(state: State):
-        last_msg = state["messages"][-1]
+        messages = list(state["messages"])
+        last_msg = messages[-1]
 
-        if isinstance(last_msg, HumanMessage):
-            # 1. Rule-Snippets aus dem VectorStore holen
-            retrieved_docs = await retriever.ainvoke(last_msg.content)
-            rules_context = "\n\n".join([d.page_content for d in retrieved_docs])
-
-            refined_user_msg = await refiner.ainvoke({
-                "user_input": last_msg.content,
-                "master_rule": dynatrace_master_rules
-            })
-
-            system_prompt = SystemMessage(
+        # Add System prompt only once
+        if not any(isinstance(m, SystemMessage) for m in messages):
+            messages.insert(0, SystemMessage(
                 content=(
                     "You are a Dynatrace observability assistant.\n"
                     "You have access to MCP tools: verify_dql, execute_dql, generate_dql_from_natural_language, "
-                    "list_problems, list_vulnerabilities, get_entity_details, get_environment_info, send_slack_message, etc.\n\n"
+                    "list_problems, list_vulnerabilities, find_entity_by_name, get_entity_details, get_environment_info, "
+                    "send_slack_message, etc.\n\n"
 
-                    "### Core Rules\n"
-                    "- Always verify queries with verify_dql BEFORE executing them.\n"
-                    "- Never use 'for' after fetch. Correct patterns are:\n"
+                    "### Core Rules for Dynatrace Assistant\n"
+                    "- Only use a tool if it is strictly required to retrieve or verify data from Dynatrace.\n"
+                    "- If the user asks for reformulation, summarization, explanation, or formatting "
+                    "(e.g. 'make JSON from the last result'), respond directly without invoking any tool.\n"
+                    "- If the user provides an entity **by name**, first resolve it with `find_entity_by_name`.\n"
+                    "- After finding the entityId, call `get_entity_details` to confirm, and only then use the `entityId` in queries.\n"
+                    "- When generating queries:\n"
+                    "  1. If you need a DQL statement, use `generate_dql_from_natural_language` with the refined user request.\n"
+                    "  2. Always call `verify_dql` before calling `execute_dql`.\n"
+                    "  3. Never skip the verify step.\n"
+                    "- Forbidden pattern: never use `for` after fetch. Correct examples:\n"
                     "    fetch logs | filter entity.id == \"<ENTITY_ID>\" | limit 10\n"
                     "    fetch spans | filter service.name == \"<NAME>\" | limit 10\n"
-                    "    fetch metric.series | filter startsWith(metric.key, \"dt.service\") | limit 10\n"
-                    "- If verify_dql shows a syntax error → fix automatically.\n"
-                    "- If execute_dql returns an empty response:\n"
-                    "    1. Retry with larger timeframes (24h → 7d).\n"
-                    "    2. Relax filters (e.g. remove specific pod names, broaden entity scope).\n"
-                    "    3. Switch data source (logs → spans → events) if relevant.\n"
-                    "- Always include span.events when investigating failed services.\n\n"
+                    "    fetch metric.series | filter startsWith(metric.key, \"dt.service\") | limit 10\n\n"
 
                     "### Error Handling Strategy\n"
-                    "Never just return an empty result.\n"
-                    "If no results are found:\n"
-                    " - Suggest and try alternative DQL automatically.\n"
-                    " - Explain to the user what adjustments you made.\n"
-                    " - Only stop if absolutely no useful data is available.\n\n"
+                    "- If `verify_dql` shows a syntax error → fix automatically.\n"
+                    "- If `execute_dql` returns an empty response:\n"
+                    "  1. Retry with a longer timeframe (24h → 7d → 30d).\n"
+                    "  2. Try alternative sources (logs → spans → events).\n"
+                    "  3. If an entityId is known, make sure you filter by entityId, not just by name.\n"
+                    "  4. Relax filters if too restrictive (e.g. remove pod-specific filters).\n"
+                    "- Never just return an empty result.\n"
+                    "- Always explain adjustments you made when retrying.\n"
+                    "- Only stop if absolutely no useful data is available.\n\n"
+
+                    "### Additional Notes\n"
+                    "- Always include `span.events` when investigating failed services.\n"
+                    "- Be proactive: if a query is too narrow or timeframe too short, automatically broaden it.\n\n"
 
                     "### Reference Knowledge\n"
                     f"{dynatrace_master_rules}\n\n"
-                    f"{rules_context}\n\n"
+                    f"{dynatrace_query_rules}\n\n"
 
                     "The user query follows below."
                 )
-            )  
+            ))
 
-            full_state = {"messages": [system_prompt, HumanMessage(content=refined_user_msg)]}
-            print(f"DEBUG: refined_user_prompt: {refined_user_msg}")
-        else:
-            # Don’t refine non-user messages
-            full_state = {"messages": state["messages"]}
+        # Nur echte User-Eingaben verfeinern und mit Kontext anreichern
+        if isinstance(last_msg, HumanMessage):
+            retrieved_docs = await retriever.ainvoke(last_msg.content)
+            rules_context = "\n\n".join([d.page_content for d in retrieved_docs])
 
-        response = await llm_with_tools.ainvoke(full_state["messages"])
+            refined = await refiner.ainvoke({
+                "user_input": last_msg.content,
+                "dt_master_rules": dynatrace_master_rules,
+                "dt_query_rules" : dynatrace_query_rules
+            })
+
+            # Ersetze die letzte HumanMessage durch die raffinierte + Kontext
+            messages[-1] = HumanMessage(
+                content=f"{refined}\n\n[Rules context]\n{rules_context}"
+            )
+
+        # GANZE History ans Modell geben
+        response = await llm_with_tools.ainvoke(messages)
         return {"messages": [response]}
 
     ############################################
@@ -184,32 +207,38 @@ async def build_graph() -> StateGraph:
     graph_builder.add_node("tools", tool_node)
     graph_builder.add_edge("tools", "chatbot")
     graph_builder.add_edge(START, "chatbot")
-    graph_builder.add_conditional_edges(
-    "chatbot", 
-    should_continue
-)
+    graph_builder.add_conditional_edges("chatbot", should_continue)
     graph_builder.add_edge("chatbot", END)
-    return graph_builder.compile()
+
+    memory = MemorySaver()
+    return graph_builder.compile(checkpointer=memory)
 
 async def run_cli(graph: StateGraph) -> None:
     async def stream_graph_updates(user_input: str):
-        async for event in graph.astream({"messages": [{"role": "user", "content": user_input}]}):
+        async for event in graph.astream({"messages": [{"role": "user", "content": user_input}]},
+                                         config={"thread_id": "cli-session"}):
             for value in event.values():
-                print(f"Assistant: {value['messages'][-1].content}")
+                msg = value["messages"][-1]  
+
+                if len(msg.content) > 2:
+                    print("-" * 20)
+                    # Assistant messages
+                    if isinstance(msg, AIMessage):   
+                        print(f"Assistant: {msg.content}")
+                    # Tool messages
+                    if isinstance(msg, ToolMessage):
+                        print(f"Tool: {msg.content}")
 
     while True:
         try:
-            user_input = input("User:")
+            user_input = input("User: ")
             if user_input.lower() in ["quit", "exit", "q"]:
                 print("Goodbye!")
                 break
 
             await stream_graph_updates(user_input)
-        except:
-            # # fallback if input() is not available
-            # user_input = "What do you know about LangGraph?"
-            # print (f"User:  {user_input}")
-            # await stream_graph_updates(user_input)
+        except Exception as e:
+            print(f"Error: {e}")
             break
 
 if __name__ == "__main__":
