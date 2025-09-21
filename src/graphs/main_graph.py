@@ -1,4 +1,5 @@
 import os
+# import sys; sys.path.append("..")
 import asyncio
 from pathlib import Path
 from dotenv import load_dotenv
@@ -7,22 +8,20 @@ from typing import Annotated
 from typing_extensions import TypedDict
 
 from langgraph.checkpoint.memory import MemorySaver
-from langchain_openai import OpenAIEmbeddings
 from langchain_core.messages import ToolMessage, AIMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langgraph.prebuilt import ToolNode
 from langchain.chat_models import init_chat_model
 from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_community.vectorstores import FAISS
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
-from langgraph.prebuilt import create_react_agent
 
+from src.tools.retrievers import RetrieverFactory
 
-env_path = Path(__file__).resolve().parents[2] / ".env"
+root_dir = Path(__file__).resolve().parents[2]
+env_path = root_dir / ".env"
 dynatrace_rules_dir = Path(__file__).resolve().parents[2] / "dynatrace_rules"
 dynatrace_master_rules = (dynatrace_rules_dir / "DynatraceMcpIntegration.md").read_text(encoding="utf-8")
 dynatrace_query_rules = (dynatrace_rules_dir / "reference" / "DynatraceQueryLanguage.md").read_text(encoding="utf-8")
@@ -32,46 +31,26 @@ DT_ENVIRONMENT = os.getenv("DT_ENVIRONMENT")
 DT_PLATFORM_TOKEN = os.getenv("DT_PLATFORM_TOKEN")
 
 # TODO: apply dynatrace rules.md file somehow to agent
-# TODO: OpenLLMetry oder OpenTelemetry einbauen und in Dynatrace, Traceloop o.a einbauen zur Observability
-# TODO: Guardrails einbauen
+    # TODO: OpenLLMetry oder OpenTelemetry einbauen und in Dynatrace, Traceloop o.a einbauen zur Observability
+    # TODO: Guardrails einbauen
 
-docs = []
-for filename in dynatrace_rules_dir.rglob("*.md"):
-    with open(filename, "r", encoding="utf-8") as f:
-        docs.append({"content": f.read(), "source": str(filename.relative_to(dynatrace_rules_dir))})
+# TODO: telemetry_team
+    # TODO: telemetry_fetcher (uses dynatrace_mcp) – DQL/Grail für logs/traces/metrics (aggregiert)
+    # TODO: telemetry_analyst – Muster/Outliers/klare Insights für App-Owner
+#
+# TODO: problems_team
+    # TODO: problems_fetcher (uses dynatrace_mcp) – offene & recente Problems (+impact)
+    # TODO: problems_mitigator – priorisierte Maßnahmen/Runbook-Schritte
+    #
+# TODO: security_team
+    # TODO: vulns_fetcher (uses dynatrace_mcp) – Vulnerabilities/Security Problems
+    # TODO: vulns_triager – Risiko-Ranking & Fix-Plan
+#
+# TODO: reporting_team
+    # TODO: report_writer – Onboarding Snapshot (Data Inventory, Health, Risks, Mitigation Plan)
 
-# Split into chunks
-splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=100)
-chunks = []
-for doc in docs:
-    for chunk in splitter.split_text(doc["content"]):
-        chunks.append({
-            "page_content": chunk,
-            "metadata": {"source": doc["source"]}
-        })
 
-# Build embeddings
-embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
-
-# Create Vector Storage
-vectorstore = FAISS.from_texts(
-    [c["page_content"] for c in chunks],
-    embedding=embeddings,
-    metadatas=[c["metadata"] for c in chunks],
-)
-
-# save
-vectorstore.save_local("dynatrace_rules_index", index_name="index")
-
-# load (same embeddings + index_name; add the safety flag)
-vectorstore = FAISS.load_local(
-    "dynatrace_rules_index",
-    embeddings,
-    index_name="index",
-    allow_dangerous_deserialization=True,  # required due to pickle in docstore
-)
-
-retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+retriever = RetrieverFactory.create_dynatrace_rules_retriever(search_kwargs={"k": 3})
 
 class State(TypedDict):
     # Messages have the type "list". The "add_messages" function in the annotation defines how this state key
