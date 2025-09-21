@@ -53,6 +53,13 @@ class PromptsFactory:
             ### Important
             - Return only raw telemetry data, no analysis.
             - Be proactive in broadening queries if needed.
+            - User your retriever tool to get context.
+
+            ### Reference Knowledge
+            {dynatrace_master_rules}
+            {dynatrace_query_rules}
+
+            
             """
 
     @staticmethod

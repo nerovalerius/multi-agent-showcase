@@ -65,8 +65,8 @@ async def build_graph() -> StateGraph:
     retriever = RetrieverFactory.create_dynatrace_rules_retriever(search_kwargs={"k": 3})
     retriever_tool = create_retriever_tool(
         retriever,
-        name="dynatrace_rules_retriever",
-        description="Search Dynatrace rules knowledge base to clarify Dynatrace queries and rules."
+        name="dynatrace_documentation",
+        description="Search Dynatrace knowledge base to improve and verify Dynatrace queries and rules."
     )
     supervisor_prompt = PromptsFactory.supervisor(dynatrace_master_rules, dynatrace_query_rules)
     telemetry_fetcher_prompt = PromptsFactory.telemetry_fetcher(dynatrace_master_rules, dynatrace_query_rules)
@@ -74,22 +74,27 @@ async def build_graph() -> StateGraph:
 
     llm = init_chat_model("gpt-5-mini", model_provider="openai")
 
-    telemetry_fetcher_agent = create_react_agent(llm.with_config({"system_prompt": PromptsFactory.telemetry_fetcher(dynatrace_master_rules, dynatrace_query_rules)}), tools=tools)
-    telemetry_analyst_agent = create_react_agent(llm.with_config({"system_prompt": PromptsFactory.telemetry_analyst()}), tools=tools)
+    telemetry_fetcher_agent = create_react_agent(llm.with_config({"system_prompt": telemetry_fetcher_prompt}), tools=tools)
+    telemetry_analyst_agent = create_react_agent(llm.with_config({"system_prompt": telemetry_analyst_prompt}), tools=tools)
         
 
-    async def make_supervisor_node(llm: BaseChatModel, members: list[str], tools: list = None) -> str:
+    async def make_supervisor_node(llm: BaseChatModel, members: list[str], tools: list = None, external_system_prompt: str = None) -> str:
         print("DEBUG: make_supervisor_node", members)
 
         llm = llm.bind_tools(tools) if tools else llm
         options = ["FINISH"] + members
-        system_prompt = (
-            "You are a supervisor tasked with managing a conversation between the"
-            f" following workers: {members}. Given the following user request,"
-            " respond with the worker to act next. Each worker will perform a"
-            " task and respond with their results and status. When finished,"
-            " respond with FINISH."
-        )
+
+        if not external_system_prompt:
+            system_prompt = (
+                "You are a supervisor tasked with managing a conversation between the"
+                f" following workers: {members}. Given the following user request,"
+                " respond with the worker to act next. Each worker will perform a"
+                " task and respond with their results and status. When finished,"
+                " respond with FINISH."
+            )
+        else:
+            system_prompt = external_system_prompt \
+            + f"You are a supervisor tasked with managing a conversation between the following workers: {members}."
 
         class Router(TypedDict):
             """Worker to route to next. If no workers needed, route to FINISH."""
@@ -103,16 +108,26 @@ async def build_graph() -> StateGraph:
             response = await llm.with_structured_output(Router).ainvoke(messages)
             goto = response["next"]
             if goto == "FINISH":
-                goto = END
+                # team finished? write report!
+                report = await llm.ainvoke([
+                    {"role": "system", "content": "Write a concise, human-readable report summarizing all worker outputs."},
+                    *state["messages"]
+                ])
+                return Command(
+                    update={
+                        "messages": [AIMessage(content=report.content, name="supervisor")]
+                    },
+                    goto="__end__"
+                )
 
             return Command(goto=goto, update={"next": goto})
-
+        
         return supervisor_node
     
     ############################################
     # Overall-Supervisor
     ############################################
-    teams_supervisor_node = await make_supervisor_node(llm, ["telemetry_team"], tools=[retriever_tool])
+    teams_supervisor_node = await make_supervisor_node(llm, ["telemetry_team"], tools=[retriever_tool], external_system_prompt=supervisor_prompt)
 
     ############################################
     # Telemetry Team
@@ -205,10 +220,13 @@ async def run_cli(graph: StateGraph) -> None:
         async for event in graph.astream({"messages": [{"role": "user", "content": user_input}]},
                                          config={"recursion_limit": 150, "thread_id": "cli-session"}):
             
-            print("EVENT KEYS:", event.keys())
+            print("-----")
             for node, value in event.items():
                 print(f"Node: {node}")
-                print(f"Value: {value}")
+                # print messages only if they exist
+                if isinstance(value, dict) and "messages" in value:
+                    for msg in value["messages"]:
+                        msg.pretty_print()
 
     while True:
         try:
