@@ -6,6 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
+# Vector Storages
+dynatrace_rules_index/
+
 # Distribution / packaging
 .Python
 build/
