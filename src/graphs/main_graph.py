@@ -129,57 +129,64 @@ async def build_graph() -> StateGraph:
     refiner = refine_prompt | llm | StrOutputParser()
 
     async def chatbot(state: State):
-        messages = list(state["messages"])
-        last_msg = messages[-1]
+        
+        system_message = f"""
+        You are a Dynatrace observability assistant.
+        You have access to MCP tools: verify_dql, execute_dql, generate_dql_from_natural_language, 
+        list_problems, list_vulnerabilities, find_entity_by_name, get_entity_details, get_environment_info, 
+        send_slack_message, etc.
+
+        ### Core Rules for Dynatrace Assistant
+        - Only use a tool if it is strictly required to retrieve or verify data from Dynatrace.
+        - If the user asks for reformulation, summarization, explanation, or formatting 
+        (e.g. 'make JSON from the last result'), respond directly without invoking any tool.
+        - If the user provides an entity **by name**, first resolve it with `find_entity_by_name`.
+        - After finding the entityId, call `get_entity_details` to confirm, and only then use the `entityId` in queries.
+        - When generating queries:
+        1. If you need a DQL statement, use `generate_dql_from_natural_language` with the refined user request.
+        2. Always call `verify_dql` before calling `execute_dql`.
+        3. Never skip the verify step.
+        - Forbidden pattern: never use `for` after fetch. Correct examples:
+            fetch logs | filter entity.id == "<ENTITY_ID>" | limit 10
+            fetch spans | filter service.name == "<NAME>" | limit 10
+            fetch metric.series | filter startsWith(metric.key, "dt.service") | limit 10
+
+        ### Error Handling Strategy
+        - If `verify_dql` shows a syntax error → fix automatically.
+        - If `execute_dql` returns an empty response:
+        1. Retry with a longer timeframe (24h → 7d → 30d).
+        2. Try alternative sources (logs → spans → events).
+        3. If an entityId is known, make sure you filter by entityId, not just by name.
+        4. Relax filters if too restrictive (e.g. remove pod-specific filters).
+        - Never just return an empty result.
+        - Always explain adjustments you made when retrying.
+        - Only stop if absolutely no useful data is available.
+
+        ### Additional Notes
+        - Always include `span.events` when investigating failed services.
+        - Be proactive: if a query is too narrow or timeframe too short, automatically broaden it.
+
+        ### Reference Knowledge
+        {dynatrace_master_rules}
+
+        {dynatrace_query_rules}
+
+        The user query follows next.
+        """
 
         # Add System prompt only once
-        if not any(isinstance(m, SystemMessage) for m in messages):
-            messages.insert(0, SystemMessage(
-                content=(
-                    "You are a Dynatrace observability assistant.\n"
-                    "You have access to MCP tools: verify_dql, execute_dql, generate_dql_from_natural_language, "
-                    "list_problems, list_vulnerabilities, find_entity_by_name, get_entity_details, get_environment_info, "
-                    "send_slack_message, etc.\n\n"
+        system_prompt_added = False
+        messages = state["messages"]
+        for message in messages:
+            if isinstance(message, SystemMessage):
+                message.content = system_message
+                system_prompt_added = True
 
-                    "### Core Rules for Dynatrace Assistant\n"
-                    "- Only use a tool if it is strictly required to retrieve or verify data from Dynatrace.\n"
-                    "- If the user asks for reformulation, summarization, explanation, or formatting "
-                    "(e.g. 'make JSON from the last result'), respond directly without invoking any tool.\n"
-                    "- If the user provides an entity **by name**, first resolve it with `find_entity_by_name`.\n"
-                    "- After finding the entityId, call `get_entity_details` to confirm, and only then use the `entityId` in queries.\n"
-                    "- When generating queries:\n"
-                    "  1. If you need a DQL statement, use `generate_dql_from_natural_language` with the refined user request.\n"
-                    "  2. Always call `verify_dql` before calling `execute_dql`.\n"
-                    "  3. Never skip the verify step.\n"
-                    "- Forbidden pattern: never use `for` after fetch. Correct examples:\n"
-                    "    fetch logs | filter entity.id == \"<ENTITY_ID>\" | limit 10\n"
-                    "    fetch spans | filter service.name == \"<NAME>\" | limit 10\n"
-                    "    fetch metric.series | filter startsWith(metric.key, \"dt.service\") | limit 10\n\n"
+        if not system_prompt_added:
+            messages = [SystemMessage(content=system_message)] + messages
 
-                    "### Error Handling Strategy\n"
-                    "- If `verify_dql` shows a syntax error → fix automatically.\n"
-                    "- If `execute_dql` returns an empty response:\n"
-                    "  1. Retry with a longer timeframe (24h → 7d → 30d).\n"
-                    "  2. Try alternative sources (logs → spans → events).\n"
-                    "  3. If an entityId is known, make sure you filter by entityId, not just by name.\n"
-                    "  4. Relax filters if too restrictive (e.g. remove pod-specific filters).\n"
-                    "- Never just return an empty result.\n"
-                    "- Always explain adjustments you made when retrying.\n"
-                    "- Only stop if absolutely no useful data is available.\n\n"
-
-                    "### Additional Notes\n"
-                    "- Always include `span.events` when investigating failed services.\n"
-                    "- Be proactive: if a query is too narrow or timeframe too short, automatically broaden it.\n\n"
-
-                    "### Reference Knowledge\n"
-                    f"{dynatrace_master_rules}\n\n"
-                    f"{dynatrace_query_rules}\n\n"
-
-                    "The user query follows below."
-                )
-            ))
-
-        # Nur echte User-Eingaben verfeinern und mit Kontext anreichern
+        # Refine newest message if it is a user prompt
+        last_msg = messages[-1]
         if isinstance(last_msg, HumanMessage):
             retrieved_docs = await retriever.ainvoke(last_msg.content)
             rules_context = "\n\n".join([d.page_content for d in retrieved_docs])
@@ -190,12 +197,12 @@ async def build_graph() -> StateGraph:
                 "dt_query_rules" : dynatrace_query_rules
             })
 
-            # Ersetze die letzte HumanMessage durch die raffinierte + Kontext
+            # Refine the last message (which is a user prompt)
             messages[-1] = HumanMessage(
                 content=f"{refined}\n\n[Rules context]\n{rules_context}"
             )
 
-        # GANZE History ans Modell geben
+        # Invoke Model with whole history
         response = await llm_with_tools.ainvoke(messages)
         return {"messages": [response]}
 
