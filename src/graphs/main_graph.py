@@ -11,16 +11,13 @@ from typing_extensions import TypedDict
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
-from langchain_core.output_parsers import StrOutputParser
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.messages import ToolMessage, AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage
 from langgraph.prebuilt import create_react_agent
 from langchain.chat_models import init_chat_model
 from langchain.tools.retriever import create_retriever_tool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.graph import StateGraph, START, END, MessagesState
-from langgraph.graph.message import add_messages
 
 from src.tools.retrievers import RetrieverFactory
 from src.prompts.prompts import PromptsFactory
@@ -38,20 +35,13 @@ dynatrace_vuln_rules = (dynatrace_rules_dir / "reference" / "DynatraceSecurityEv
 #####################################
 load_dotenv(dotenv_path=env_path, override=True)
 DT_ENVIRONMENT = os.getenv("DT_ENVIRONMENT")
-DT_LIVE_ENVIRONMENT = os.getenv("DT_LIVE_ENVIRONMENT")
 DT_PLATFORM_TOKEN = os.getenv("DT_PLATFORM_TOKEN")
 os.environ['OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE'] = "delta"
 
 #####################################
 # Initialize Traceloop for Observability
 #####################################
-headers = {"Authorization": f"Api-Token {DT_PLATFORM_TOKEN}" }
-# Traceloop.init(
-#     app_name="multi-agent-showcase",
-#     api_endpoint=f"{DT_LIVE_ENVIRONMENT}/api/v2/otlp",
-#     headers=headers,
-#     disable_batch=True
-# )
+Traceloop.init(app_name="multi-agent-showcase")
 
 # TODO: OpenLLMetry oder OpenTelemetry einbauen und in Dynatrace, Traceloop o.a einbauen zur Observability
 # TODO: Guardrails einbauen
@@ -93,7 +83,6 @@ async def build_graph() -> StateGraph:
     # Initialize LLMs, Prompts and Agents
     ############################################
     llm = init_chat_model("gpt-5-mini", model_provider="openai")
-    # llm = Traceloop.instrument_langchain(llm)
 
     supervisor_prompt = PromptsFactory.supervisor(dynatrace_master_rules, dynatrace_query_rules)
     telemetry_supervisor_prompt = PromptsFactory.telemetry_supervisor()
@@ -138,8 +127,7 @@ async def build_graph() -> StateGraph:
                 "- Never loop workers infinitely. Each cycle must move forward or stop.\n\n"
 
                 "### Important\n"
-                "- Respond only with the next worker to act.\n"
-                "- If the task is complete, respond with FINISH.\n"
+                f"- Respond only with exactly one of: {members} or FINISH.\n"
             )
         else:
             system_prompt = external_system_prompt \
