@@ -40,7 +40,7 @@ for filename in dynatrace_rules_dir.rglob("*.md"):
     with open(filename, "r", encoding="utf-8") as f:
         docs.append({"content": f.read(), "source": str(filename.relative_to(dynatrace_rules_dir))})
 
-# in Chunks splitten
+# Split into chunks
 splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=100)
 chunks = []
 for doc in docs:
@@ -50,18 +50,26 @@ for doc in docs:
             "metadata": {"source": doc["source"]}
         })
 
-# Embeddings bauen
+# Build embeddings
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 
-# VectorStore erstellen
+# Create Vector Storage
 vectorstore = FAISS.from_texts(
     [c["page_content"] for c in chunks],
     embedding=embeddings,
     metadatas=[c["metadata"] for c in chunks],
 )
 
-# speichern für Wiederverwendung
-vectorstore.save_local("dynatrace_rules_index")
+# save
+vectorstore.save_local("dynatrace_rules_index", index_name="index")
+
+# load (same embeddings + index_name; add the safety flag)
+vectorstore = FAISS.load_local(
+    "dynatrace_rules_index",
+    embeddings,
+    index_name="index",
+    allow_dangerous_deserialization=True,  # required due to pickle in docstore
+)
 
 retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
 
