@@ -10,4 +10,5 @@ dependencies = [
     "langchain-mcp-adapters>=0.1.10",
     "langgraph>=0.6.7",
     "python-dotenv>=1.1.1",
+    "traceloop-sdk>=0.47.3",
 ]
