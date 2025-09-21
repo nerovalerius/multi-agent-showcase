@@ -4,21 +4,25 @@ import asyncio
 from pathlib import Path
 from dotenv import load_dotenv
 
-from typing import Annotated
+from typing import Literal
 from typing_extensions import TypedDict
 
 from langgraph.checkpoint.memory import MemorySaver
-from langchain_core.messages import ToolMessage, AIMessage, HumanMessage, SystemMessage
-from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
+from langgraph.types import Command
 from langchain_core.output_parsers import StrOutputParser
-from langgraph.prebuilt import ToolNode
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import ToolMessage, AIMessage, HumanMessage, SystemMessage
+from langgraph.prebuilt import create_react_agent
 from langchain.chat_models import init_chat_model
+from langchain.tools.retriever import create_retriever_tool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
-from langgraph.graph import StateGraph, START, END
+from langgraph.graph import StateGraph, START, END, MessagesState
 from langgraph.graph.message import add_messages
 
 from src.tools.retrievers import RetrieverFactory
+from src.prompts.prompts import PromptsFactory
 
 root_dir = Path(__file__).resolve().parents[2]
 env_path = root_dir / ".env"
@@ -30,33 +34,14 @@ load_dotenv(dotenv_path=env_path, override=True)
 DT_ENVIRONMENT = os.getenv("DT_ENVIRONMENT")
 DT_PLATFORM_TOKEN = os.getenv("DT_PLATFORM_TOKEN")
 
+
 # TODO: apply dynatrace rules.md file somehow to agent
     # TODO: OpenLLMetry oder OpenTelemetry einbauen und in Dynatrace, Traceloop o.a einbauen zur Observability
     # TODO: Guardrails einbauen
 
-# TODO: telemetry_team
-    # TODO: telemetry_fetcher (uses dynatrace_mcp) – DQL/Grail für logs/traces/metrics (aggregiert)
-    # TODO: telemetry_analyst – Muster/Outliers/klare Insights für App-Owner
-#
-# TODO: problems_team
-    # TODO: problems_fetcher (uses dynatrace_mcp) – offene & recente Problems (+impact)
-    # TODO: problems_mitigator – priorisierte Maßnahmen/Runbook-Schritte
-    #
-# TODO: security_team
-    # TODO: vulns_fetcher (uses dynatrace_mcp) – Vulnerabilities/Security Problems
-    # TODO: vulns_triager – Risiko-Ranking & Fix-Plan
-#
-# TODO: reporting_team
-    # TODO: report_writer – Onboarding Snapshot (Data Inventory, Health, Risks, Mitigation Plan)
 
-
-retriever = RetrieverFactory.create_dynatrace_rules_retriever(search_kwargs={"k": 3})
-
-class State(TypedDict):
-    # Messages have the type "list". The "add_messages" function in the annotation defines how this state key
-    # should be updated (in this case, it appends messages to the list, rather than overwriting them)
-    messages: Annotated[list, add_messages]
-
+class State(MessagesState):
+    next: str
 
 async def build_graph() -> StateGraph:
 
@@ -76,152 +61,154 @@ async def build_graph() -> StateGraph:
         }
     })
 
-    def should_continue(state: State):
-        messages = state["messages"]
-        last_message = messages[-1]
-
-        if isinstance(last_message, AIMessage) and getattr(last_message, "tool_calls", None):
-            return "tools"
-        return END
-
     tools = await client.get_tools()
-    tool_node = ToolNode(tools)
-
-    # print(tool_node)
+    retriever = RetrieverFactory.create_dynatrace_rules_retriever(search_kwargs={"k": 3})
+    retriever_tool = create_retriever_tool(
+        retriever,
+        name="dynatrace_rules_retriever",
+        description="Search Dynatrace rules knowledge base to clarify Dynatrace queries and rules."
+    )
+    supervisor_prompt = PromptsFactory.supervisor(dynatrace_master_rules, dynatrace_query_rules)
+    telemetry_fetcher_prompt = PromptsFactory.telemetry_fetcher(dynatrace_master_rules, dynatrace_query_rules)
+    telemetry_analyst_prompt = PromptsFactory.telemetry_analyst()
 
     llm = init_chat_model("gpt-5-mini", model_provider="openai")
-    llm_with_tools =  llm.bind_tools(tools)
 
-    refine_prompt = ChatPromptTemplate.from_messages([
-        ("system",
-        "You are a prompt refiner for Dynatrace Observability.\n"
-        "You take a raw user query and rewrite it into a clear, precise instruction for the Dynatrace MCP agent.\n\n"
-        "Requirements:\n"
-        "- Use the Dynatrace Master Rule as the source of truth.\n"
-        "- Do NOT generate DQL directly. Instead, clarify intent in natural language for the agent.\n"
-        "- Always specify the data source (logs, spans, events, metrics).\n"
-        "- Add a reasonable timeframe (default: from:now()-24h) if not specified.\n"
-        "- Include entity IDs or names if provided.\n"
-        "- Emphasize that queries must be verified with `verify_dql` before `execute_dql`.\n"
-        "- Never mention `for` after `fetch` (this is a forbidden pattern).\n"
-        "- Return only the refined prompt, no explanations.\n\n"
-        "- If the user request is about summarization, reformulation, explanation, or formatting (e.g. 'convert to JSON'), "
-        "then do NOT insert tool-usage instructions. Just refine the request as a plain natural-language instruction.\n\n"
-        "### Reference Knowledge\n"
-        "{dt_master_rules}\n\n"
-        "{dt_query_rules}\n\n"),
-        ("user", "{user_input}")
-    ])
-
-    refiner = refine_prompt | llm | StrOutputParser()
-
-    async def chatbot(state: State):
+    telemetry_fetcher_agent = create_react_agent(llm.with_config({"system_prompt": PromptsFactory.telemetry_fetcher(dynatrace_master_rules, dynatrace_query_rules)}), tools=tools)
+    telemetry_analyst_agent = create_react_agent(llm.with_config({"system_prompt": PromptsFactory.telemetry_analyst()}), tools=tools)
         
-        system_message = f"""
-        You are a Dynatrace observability assistant.
-        You have access to MCP tools: verify_dql, execute_dql, generate_dql_from_natural_language, 
-        list_problems, list_vulnerabilities, find_entity_by_name, get_entity_details, get_environment_info, 
-        send_slack_message, etc.
 
-        ### Core Rules for Dynatrace Assistant
-        - Only use a tool if it is strictly required to retrieve or verify data from Dynatrace.
-        - If the user asks for reformulation, summarization, explanation, or formatting 
-        (e.g. 'make JSON from the last result'), respond directly without invoking any tool.
-        - If the user provides an entity **by name**, first resolve it with `find_entity_by_name`.
-        - After finding the entityId, call `get_entity_details` to confirm, and only then use the `entityId` in queries.
-        - When generating queries:
-        1. If you need a DQL statement, use `generate_dql_from_natural_language` with the refined user request.
-        2. Always call `verify_dql` before calling `execute_dql`.
-        3. Never skip the verify step.
-        - Forbidden pattern: never use `for` after fetch. Correct examples:
-            fetch logs | filter entity.id == "<ENTITY_ID>" | limit 10
-            fetch spans | filter service.name == "<NAME>" | limit 10
-            fetch metric.series | filter startsWith(metric.key, "dt.service") | limit 10
+    async def make_supervisor_node(llm: BaseChatModel, members: list[str], tools: list = None) -> str:
+        print("DEBUG: make_supervisor_node", members)
 
-        ### Error Handling Strategy
-        - If `verify_dql` shows a syntax error → fix automatically.
-        - If `execute_dql` returns an empty response:
-        1. Retry with a longer timeframe (24h → 7d → 30d).
-        2. Try alternative sources (logs → spans → events).
-        3. If an entityId is known, make sure you filter by entityId, not just by name.
-        4. Relax filters if too restrictive (e.g. remove pod-specific filters).
-        - Never just return an empty result.
-        - Always explain adjustments you made when retrying.
-        - Only stop if absolutely no useful data is available.
+        llm = llm.bind_tools(tools) if tools else llm
+        options = ["FINISH"] + members
+        system_prompt = (
+            "You are a supervisor tasked with managing a conversation between the"
+            f" following workers: {members}. Given the following user request,"
+            " respond with the worker to act next. Each worker will perform a"
+            " task and respond with their results and status. When finished,"
+            " respond with FINISH."
+        )
 
-        ### Additional Notes
-        - Always include `span.events` when investigating failed services.
-        - Be proactive: if a query is too narrow or timeframe too short, automatically broaden it.
+        class Router(TypedDict):
+            """Worker to route to next. If no workers needed, route to FINISH."""
+            next: Literal[*options]
 
-        ### Reference Knowledge
-        {dynatrace_master_rules}
+        async def supervisor_node(state: State) -> Command[Literal[*members, "__end__"]]:
+            """An LLM-based router."""
+            messages = [
+                {"role": "system", "content": system_prompt},
+            ] + state["messages"]
+            response = await llm.with_structured_output(Router).ainvoke(messages)
+            goto = response["next"]
+            if goto == "FINISH":
+                goto = END
 
-        {dynatrace_query_rules}
+            return Command(goto=goto, update={"next": goto})
 
-        The user query follows next.
-        """
-
-        # Add System prompt only once
-        system_prompt_added = False
-        messages = state["messages"]
-        for message in messages:
-            if isinstance(message, SystemMessage):
-                message.content = system_message
-                system_prompt_added = True
-
-        if not system_prompt_added:
-            messages = [SystemMessage(content=system_message)] + messages
-
-        # Refine newest message if it is a user prompt
-        last_msg = messages[-1]
-        if isinstance(last_msg, HumanMessage):
-            retrieved_docs = await retriever.ainvoke(last_msg.content)
-            rules_context = "\n\n".join([d.page_content for d in retrieved_docs])
-
-            refined = await refiner.ainvoke({
-                "user_input": last_msg.content,
-                "dt_master_rules": dynatrace_master_rules,
-                "dt_query_rules" : dynatrace_query_rules
-            })
-
-            # Refine the last message (which is a user prompt)
-            messages[-1] = HumanMessage(
-                content=f"{refined}\n\n[Rules context]\n{rules_context}"
-            )
-
-        # Invoke Model with whole history
-        response = await llm_with_tools.ainvoke(messages)
-        return {"messages": [response]}
+        return supervisor_node
+    
+    ############################################
+    # Overall-Supervisor
+    ############################################
+    teams_supervisor_node = await make_supervisor_node(llm, ["telemetry_team"], tools=[retriever_tool])
 
     ############################################
-    # Build Graph
+    # Telemetry Team
     ############################################
-    graph_builder = StateGraph(State)
-    graph_builder.add_node("chatbot", chatbot)
-    graph_builder.add_node("tools", tool_node)
-    graph_builder.add_edge("tools", "chatbot")
-    graph_builder.add_edge(START, "chatbot")
-    graph_builder.add_conditional_edges("chatbot", should_continue)
-    graph_builder.add_edge("chatbot", END)
+    telemetry_supervisor_node = await make_supervisor_node(llm, ["telemetry_fetcher", "telemetry_analyst"], tools=[retriever_tool])
+    ############################################
+    # Telemetry Team Supervisor
+    ############################################
+    async def call_telemetry_team(state: State) -> Command[Literal["supervisor"]]:
+        response = await telemetry_graph.ainvoke({"messages": [state["messages"][-1]]})
+        print("call_telemetry_team")
+        return Command(
+            update={
+                "messages": [
+                    AIMessage(
+                        content=response["messages"][-1].content,
+                        name="telemetry_team",
+                    )
+                ]
+            },
+            goto="supervisor",
+        )
+
+    ############################################
+    # Telemetry Fetcher
+    ############################################
+    async def telemetry_fetcher_node(state: State) -> Command[Literal["supervisor"]]:
+        print("DEBUG: telemetry_fetcher_node")
+        result = await telemetry_fetcher_agent.ainvoke(state)
+        return Command(
+            update={
+                "messages": [AIMessage(content=result["messages"][-1].content, name="telemetry_fetcher")]
+            },
+            # Always report back to supervisor when done
+            goto="supervisor"
+        )
+
+    ############################################
+    # Telemetry Analyst
+    ############################################
+    async def telemetry_analyst_node(state: State) -> Command[Literal["supervisor"]]:
+        print("DEBUG: telemetry_analyst_node")
+        result = await telemetry_analyst_agent.ainvoke(state)
+        return Command(
+            update={
+                "messages": [AIMessage(content=result["messages"][-1].content, name="telemetry_analyst")]
+            },
+            # Always report back to supervisor when done
+            goto="supervisor"
+        )
+
+    # TODO: telemetry_fetcher (uses dynatrace_mcp) – DQL/Grail for logs/traces/metrics (aggregated)
+    # TODO: telemetry_analyst – detect patterns/outliers and produce clear insights for the app owner
+
+    # TODO: problems_team
+    # TODO: problems_fetcher (uses dynatrace_mcp) – fetch open & recent problems (+impact)
+    # TODO: problems_mitigator – derive prioritized actions/runbook steps
+    #
+    # TODO: security_team
+    # TODO: vulns_fetcher (uses dynatrace_mcp) – fetch vulnerabilities/security problems
+    # TODO: vulns_triager – risk ranking & fix plan
+    #
+    # TODO: reporting_team
+    # TODO: report_writer – Onboarding Snapshot (Data Inventory, Health, Risks, Mitigation Plan)
+
+    #############################################
+    # Build Telemetry Subgraph
+    #############################################
+    telemetry_builder = StateGraph(State)
+    telemetry_builder.add_node("supervisor", telemetry_supervisor_node)
+    telemetry_builder.add_node("telemetry_fetcher", telemetry_fetcher_node)
+    telemetry_builder.add_node("telemetry_analyst", telemetry_analyst_node)
+    telemetry_builder.add_edge(START, "supervisor")
+    telemetry_graph = telemetry_builder.compile()
+
+    ############################################
+    # Build Main Graph
+    ############################################
+    super_builder = StateGraph(State)
+    super_builder.add_node("supervisor", teams_supervisor_node)
+    super_builder.add_node("telemetry_team", call_telemetry_team)
+    super_builder.add_edge(START, "supervisor")
 
     memory = MemorySaver()
-    return graph_builder.compile(checkpointer=memory)
+    return super_builder.compile(checkpointer=memory)
+
 
 async def run_cli(graph: StateGraph) -> None:
     async def stream_graph_updates(user_input: str):
         async for event in graph.astream({"messages": [{"role": "user", "content": user_input}]},
-                                         config={"thread_id": "cli-session"}):
-            for value in event.values():
-                msg = value["messages"][-1]  
-
-                if len(msg.content) > 2:
-                    print("-" * 20)
-                    # Assistant messages
-                    if isinstance(msg, AIMessage):   
-                        print(f"Assistant: {msg.content}")
-                    # Tool messages
-                    if isinstance(msg, ToolMessage):
-                        print(f"Tool: {msg.content}")
+                                         config={"recursion_limit": 150, "thread_id": "cli-session"}):
+            
+            print("EVENT KEYS:", event.keys())
+            for node, value in event.items():
+                print(f"Node: {node}")
+                print(f"Value: {value}")
 
     while True:
         try:
