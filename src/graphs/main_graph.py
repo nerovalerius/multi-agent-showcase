@@ -32,14 +32,13 @@ dynatrace_vuln_rules = (dynatrace_rules_dir / "reference" / "DynatraceSecurityEv
 # Load environment variables
 #####################################
 load_dotenv(dotenv_path=env_path, override=True)
-DT_ENVIRONMENT = os.getenv("DT_ENVIRONMENT")
-DT_PLATFORM_TOKEN = os.getenv("DT_PLATFORM_TOKEN")
-os.environ['OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE'] = "delta"
+
 
 #####################################
 # Initialize Traceloop for Observability
 #####################################
 Traceloop.init(app_name="multi-agent-showcase")
+os.environ["TRACELOOP_DISABLE_METRICS"] = "true"
 
 # TODO: OpenLLMetry oder OpenTelemetry einbauen und in Dynatrace, Traceloop o.a einbauen zur Observability
 # TODO: Guardrails einbauen
@@ -51,9 +50,10 @@ class State(MessagesState):
 class MultiAgentGraphFactory():
     """Factory to create the multi-agent graph with telemetry, problems, and security teams."""
 
-    def __init__(self, llm: BaseChatModel):
+    def __init__(self, llm: BaseChatModel, memory_saver: MemorySaver = MemorySaver()) -> None:
         """Initialize the graph factory with the given LLM."""
         self.llm = llm
+        self.memory_saver = memory_saver
         self.init_prompts()
         self.init_tools()
         self.init_agents()
@@ -75,7 +75,21 @@ class MultiAgentGraphFactory():
     def init_tools(self) -> None:
         """Initialize all tools used in the graph."""
         self.retriever_tool = RetrieverFactory().create_dynatrace_rules_retriever(search_kwargs={"k": 3})
-        self.mcp_tools = asyncio.run(MCPClientFactory.create_dynatrace_mcp_client())
+       # Magic to run async code in sync context (Streamlit, etc)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            # Streamlit already has a running loop
+            future = asyncio.run_coroutine_threadsafe(
+                MCPClientFactory.create_dynatrace_mcp_client(),
+                loop
+            )
+            self.mcp_tools = future.result()
+        else:
+            self.mcp_tools = asyncio.run(MCPClientFactory.create_dynatrace_mcp_client())
         self.tools = self.mcp_tools + [self.retriever_tool]
 
     def init_agents(self) -> None:
@@ -339,5 +353,4 @@ class MultiAgentGraphFactory():
         self.super_builder.add_node("security_team", self.call_security_team)
         self.super_builder.add_edge(START, "supervisor")
 
-        memory = MemorySaver()
-        return self.super_builder.compile(checkpointer=memory)
+        return self.super_builder.compile(checkpointer=self.memory_saver)
