@@ -1,7 +1,7 @@
 
 class PromptsFactory:
     """Factory for all role-specific system prompts."""
-    
+    # TODO: improve prompt such that questions are answered if possible and else forwarded to the user
     @staticmethod
     def supervisor(dynatrace_master_rules: str, dynatrace_query_rules: str) -> str:
         return f"""

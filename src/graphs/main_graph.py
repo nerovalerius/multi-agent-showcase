@@ -38,7 +38,6 @@ load_dotenv(dotenv_path=env_path, override=True)
 # Initialize Traceloop for Observability
 #####################################
 Traceloop.init(app_name="multi-agent-showcase")
-os.environ["TRACELOOP_DISABLE_METRICS"] = "true"
 
 # TODO: OpenLLMetry oder OpenTelemetry einbauen und in Dynatrace, Traceloop o.a einbauen zur Observability
 # TODO: Guardrails einbauen
@@ -55,9 +54,7 @@ class MultiAgentGraphFactory():
         self.llm = llm
         self.memory_saver = memory_saver
         self.init_prompts()
-        self.init_tools()
-        self.init_agents()
-        self.init_supervisor_nodes()
+        # the rest of the inits is in build_graph()
 
     def init_prompts(self) -> None:
         """Initialize all prompts used in the graph."""
@@ -72,24 +69,10 @@ class MultiAgentGraphFactory():
         self.security_fetcher_prompt = PromptsFactory.security_fetcher(dynatrace_master_rules, dynatrace_vuln_rules)
         self.security_analyst_prompt = PromptsFactory.security_analyst()
 
-    def init_tools(self) -> None:
+    async def init_tools(self) -> None:
         """Initialize all tools used in the graph."""
         self.retriever_tool = RetrieverFactory().create_dynatrace_rules_retriever(search_kwargs={"k": 3})
-       # Magic to run async code in sync context (Streamlit, etc)
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            # Streamlit already has a running loop
-            future = asyncio.run_coroutine_threadsafe(
-                MCPClientFactory.create_dynatrace_mcp_client(),
-                loop
-            )
-            self.mcp_tools = future.result()
-        else:
-            self.mcp_tools = asyncio.run(MCPClientFactory.create_dynatrace_mcp_client())
+        self.mcp_tools = await MCPClientFactory.create_dynatrace_mcp_client()
         self.tools = self.mcp_tools + [self.retriever_tool]
 
     def init_agents(self) -> None:
@@ -313,6 +296,14 @@ class MultiAgentGraphFactory():
         )
 
     async def build_graph(self) -> StateGraph:
+
+        #############################################
+        # Initialize Tools, Agents, and Supervisor Nodes
+        #############################################
+        await self.init_tools()
+        self.init_agents()
+        self.init_supervisor_nodes()
+
         #############################################
         # Build Telemetry Subgraph
         #############################################

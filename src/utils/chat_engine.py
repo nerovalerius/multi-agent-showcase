@@ -3,69 +3,50 @@ from pathlib import Path
 from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import START, MessagesState, StateGraph
+
 from src.graphs.main_graph import MultiAgentGraphFactory
 
-
 class ChatBot:
-    """Dynatrace assistant using LangGraph + LangChain."""
-
+    """A simple chatbot class that uses LangGraph and LangChain for conversational AI."""
     AVAILABLE_MODELS = {
         "gpt-5-mini",
-        "gpt-5",
+        "gpt-5"
         "gpt-5-nano",
     }
 
     def __init__(self, model_name: str = "gpt-5-mini"):
+        """Initialize the ChatBot with the specified LLM model."""
         self.model_name = model_name
         self.memory = MemorySaver()
         self.llm = self._setup_llm()
-        self.graph = None  # build later, async
+        self.graph = self._setup_workflow()
 
     def _setup_llm(self):
+        """Initialize the chat model based on the selected model name."""
         root_dir = Path(__file__).resolve().parents[2]
         env_path = root_dir / ".env"
         load_dotenv(dotenv_path=env_path, override=True)
-        return init_chat_model(self.model_name, model_provider="openai", streaming=True)
+        return init_chat_model("gpt-5-mini", model_provider="openai")
 
-    async def setup_graph(self):
-        """Build graph asynchronously (only once)."""
-        if self.graph is None:
-            factory = MultiAgentGraphFactory(llm=self.llm, memory_saver=self.memory)
-            self.graph = await factory.build_graph()
-            print("[DEBUG ChatBot] Graph built", flush=True)
+    def _setup_workflow(self):
+        """Set up the multi-agent workflow graph."""
+        factory = MultiAgentGraphFactory(llm=self.llm, memory_saver=self.memory)
+        return asyncio.run(factory.build_graph())
 
     async def chat(self, message: str, thread_id: str):
-        """Stream assistant responses event by event."""
-        # ensure graph exists
-        if self.graph is None:
-            await self.setup_graph()
-
-        print(f"[DEBUG ChatBot.chat] started with message={message}, thread_id={thread_id}", flush=True)
-
-        got_output = False
+        """Stream tokens from the graph as they arrive."""
         async for event in self.graph.astream(
             {"messages": [{"role": "user", "content": message}]},
             config={"recursion_limit": 50, "thread_id": thread_id},
         ):
-            print(f"[DEBUG ChatBot.chat] event: {event}", flush=True)
-
             for node, value in event.items():
                 if isinstance(value, dict) and "messages" in value:
                     for msg in value["messages"]:
-                        content = getattr(msg, "content", None)
-                        if content:
-                            got_output = True
-                            print(f"[DEBUG ChatBot.chat] yielding content={content}", flush=True)
-                            yield str(content)
+                        yield msg.content
 
-        if not got_output:
-            print("[DEBUG ChatBot.chat] no output messages", flush=True)
-            yield "⚠️ No response from graph"
-
-    async def update_model(self, model_name: str):
-        """Update the LLM and rebuild graph."""
+    def update_model(self, model_name: str):
+        """Update the LLM model used by the chatbot."""
         self.model_name = model_name
         self.llm = self._setup_llm()
-        self.graph = None
-        await self.setup_graph()
-        print(f"[DEBUG ChatBot] model updated to {model_name}", flush=True)
+        self.app = self._setup_workflow()
