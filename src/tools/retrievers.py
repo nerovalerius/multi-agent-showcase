@@ -4,15 +4,26 @@ from typing import Optional
 from langchain_openai import OpenAIEmbeddings
 from langchain_core.retrievers import BaseRetriever
 from langchain_community.vectorstores import FAISS
+from langchain.tools.retriever import create_retriever_tool
 from langchain_text_splitters import RecursiveCharacterTextSplitter 
 
 class RetrieverFactory:
     @staticmethod
     def create_dynatrace_rules_retriever(search_kwargs: Optional[dict] = None,
                                           search_type: Optional[str] = None) -> BaseRetriever:
-        root = Path(__file__).resolve().parents[2]
-        dynatrace_rules_index_dir = root / "dynatrace_rules_index"
-        dynatrace_md_rules_dir = root / "dynatrace_rules"
+        """
+        Create or load a FAISS retriever for Dynatrace rules.
+        
+        Args:
+            search_kwargs (Optional[dict]): Additional search parameters for the retriever.
+            search_type (Optional[str]): Type of search to perform (e.g., "similarity", "mmr").
+
+        Returns:
+            BaseRetriever: Configured retriever instance.
+        """
+        project_root = Path(__file__).resolve().parents[2]
+        dynatrace_rules_index_dir = project_root / "dynatrace_rules_index"
+        dynatrace_md_rules_dir = project_root / "dynatrace_rules"
 
         embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
         search_kwargs = search_kwargs or {"k": 3}
@@ -58,4 +69,10 @@ class RetrieverFactory:
             **({"search_type": search_type} if search_type else {})
         )
 
-        return retriever
+        retriever_tool = create_retriever_tool(
+            retriever,
+            name="dynatrace_documentation",
+            description="Search Dynatrace knowledge base to improve and verify Dynatrace queries and rules."
+        )
+
+        return retriever_tool
