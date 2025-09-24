@@ -12,7 +12,7 @@ from typing_extensions import TypedDict
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage
+from langchain_core.messages import HumanMessage, HumanMessage
 from langgraph.prebuilt import create_react_agent
 from langgraph.graph import StateGraph, START, END, MessagesState
 
@@ -46,6 +46,8 @@ Traceloop.init(app_name="multi-agent-showcase")
 # TODO: traceloop - rejected metric error fixen
 
 # TODO: fetcher und teamleads sollen nachfolge fragen richtig abarbeiten vom mcp server
+
+# TODO: wenn die supervisors fragen bekomen ala next steps, dann sollen sie bevorzugt den nutzer fragen
 
 class State(MessagesState):
     next: str
@@ -83,12 +85,12 @@ class MultiAgentGraphFactory():
 
     def init_agents(self) -> None:
         """Initialize all agents used in the graph."""
-        self.telemetry_fetcher_agent = create_react_agent(self.llm.with_config({"system_prompt": self.telemetry_fetcher_prompt}), tools=self.tools)
-        self.telemetry_analyst_agent = create_react_agent(self.llm.with_config({"system_prompt": self.telemetry_analyst_prompt}), tools=[self.retriever_tool])
-        self.problems_fetcher_agent = create_react_agent(self.llm.with_config({"system_prompt": self.problems_fetcher_prompt}), tools=self.tools)
-        self.problems_analyst_agent = create_react_agent(self.llm.with_config({"system_prompt": self.problems_analyst_prompt}), tools=[self.retriever_tool])
-        self.security_fetcher_agent = create_react_agent(self.llm.with_config({"system_prompt": self.security_fetcher_prompt}), tools=self.tools)
-        self.security_analyst_agent = create_react_agent(self.llm.with_config({"system_prompt": self.security_analyst_prompt}), tools=[self.retriever_tool])
+        self.telemetry_fetcher_agent = create_react_agent(self.llm, tools=self.tools, prompt=self.telemetry_fetcher_prompt)
+        self.telemetry_analyst_agent = create_react_agent(self.llm, tools=[self.retriever_tool], prompt=self.telemetry_analyst_prompt)
+        self.problems_fetcher_agent = create_react_agent(self.llm, tools=self.tools, prompt=self.problems_fetcher_prompt)
+        self.security_analyst_agent = create_react_agent(self.llm, tools=[self.retriever_tool], prompt=self.security_analyst_prompt)
+        self.security_fetcher_agent = create_react_agent(self.llm, tools=self.tools, prompt=self.security_fetcher_prompt)
+        self.problems_analyst_agent = create_react_agent(self.llm, tools=[self.retriever_tool], prompt=self.problems_analyst_prompt)
         
     def init_supervisor_nodes(self) -> None:
         """Initialize all supervisor nodes used in the graph."""
@@ -105,9 +107,14 @@ class MultiAgentGraphFactory():
         llm = llm.bind_tools(tools) if tools else llm
         options = ["FINISH"] + members
 
-        system_prompt =  f"You are a supervisor tasked with managing a conversation between the following workers: {members}." \
-        + external_system_prompt
-        
+        system_prompt = (
+            "You are a supervisor tasked with managing a conversation between the"
+            f" following workers: {members}. Given the following user request,"
+            " respond with the worker to act next. Each worker will perform a"
+            " task and respond with their results and status. When finished,"
+            " respond with FINISH."
+        ) + external_system_prompt
+
         class Router(TypedDict):
             """Worker to route to next. If no workers needed, route to FINISH."""
             next: Literal[*options]
@@ -127,7 +134,7 @@ class MultiAgentGraphFactory():
                 ])
                 return Command(
                     update={
-                        "messages": [AIMessage(content=report.content, name="supervisor")]
+                        "messages": [HumanMessage(content=report.content, name="supervisor")]
                     },
                     goto="__end__"
                 )
@@ -145,7 +152,7 @@ class MultiAgentGraphFactory():
         return Command(
             update={
                 "messages": [
-                    AIMessage(
+                    HumanMessage(
                         content=response["messages"][-1].content,
                         name="telemetry_team",
                     )
@@ -163,7 +170,7 @@ class MultiAgentGraphFactory():
         result = await self.telemetry_fetcher_agent.ainvoke(state)
         return Command(
             update={
-                "messages": [AIMessage(content=result["messages"][-1].content, name="telemetry_fetcher")]
+                "messages": [HumanMessage(content=result["messages"][-1].content, name="telemetry_fetcher")]
             },
             # Always report back to supervisor when done
             goto="supervisor"
@@ -178,7 +185,7 @@ class MultiAgentGraphFactory():
         result = await self.telemetry_analyst_agent.ainvoke(state)
         return Command(
             update={
-                "messages": [AIMessage(content=result["messages"][-1].content, name="telemetry_analyst")]
+                "messages": [HumanMessage(content=result["messages"][-1].content, name="telemetry_analyst")]
             },
             # Always report back to supervisor when done
             goto="supervisor"
@@ -194,7 +201,7 @@ class MultiAgentGraphFactory():
         return Command(
             update={
                 "messages": [
-                    AIMessage(
+                    HumanMessage(
                         content=response["messages"][-1].content,
                         name="problems_team",
                     )
@@ -212,7 +219,7 @@ class MultiAgentGraphFactory():
         result = await self.problems_fetcher_agent.ainvoke(state)
         return Command(
             update={
-                "messages": [AIMessage(content=result["messages"][-1].content, name="problems_fetcher")]
+                "messages": [HumanMessage(content=result["messages"][-1].content, name="problems_fetcher")]
             },
             # Always report back to supervisor when done
             goto="supervisor"
@@ -228,7 +235,7 @@ class MultiAgentGraphFactory():
         result = await self.problems_analyst_agent.ainvoke(state)
         return Command(
             update={
-                "messages": [AIMessage(content=result["messages"][-1].content, name="problems_analyst")]
+                "messages": [HumanMessage(content=result["messages"][-1].content, name="problems_analyst")]
             },
             # Always report back to supervisor when done
             goto="supervisor"
@@ -244,7 +251,7 @@ class MultiAgentGraphFactory():
         return Command(
             update={
                 "messages": [
-                    AIMessage(
+                    HumanMessage(
                         content=response["messages"][-1].content,
                         name="security_team",
                     )
@@ -262,7 +269,7 @@ class MultiAgentGraphFactory():
         result = await self.security_fetcher_agent.ainvoke(state)
         return Command(
             update={
-                "messages": [AIMessage(content=result["messages"][-1].content, name="security_fetcher")]
+                "messages": [HumanMessage(content=result["messages"][-1].content, name="security_fetcher")]
             },
             # Always report back to supervisor when done
             goto="supervisor"
@@ -277,7 +284,7 @@ class MultiAgentGraphFactory():
         result = await self.security_analyst_agent.ainvoke(state)
         return Command(
             update={
-                "messages": [AIMessage(content=result["messages"][-1].content, name="security_analyst")]
+                "messages": [HumanMessage(content=result["messages"][-1].content, name="security_analyst")]
             },
             # Always report back to supervisor when done
             goto="supervisor"
