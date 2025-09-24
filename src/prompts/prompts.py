@@ -36,6 +36,7 @@ class PromptsFactory:
         - Once telemetry_fetcher returns raw telemetry data, call telemetry_analyst.
         - If there is no telemetry-related request, respond with FINISH.
         - Avoid infinite loops.
+        - Do not recommend next steps.
 
         Only return the next worker name or FINISH.
                 """
@@ -88,6 +89,7 @@ class PromptsFactory:
         - Once problems_fetcher returns raw problem data, call problems_analyst.
         - If there is no problem-related request, respond with FINISH.
         - Avoid infinite loops.
+        - Do not recommend next steps.
 
         Only return the next worker name or FINISH.
                 """
@@ -139,6 +141,7 @@ class PromptsFactory:
         - Once security_fetcher returns raw security data, call security_analyst.
         - If there is no security-related request, respond with FINISH.
         - Avoid infinite loops.
+        - Do not recommend next steps.
 
         Only return the next worker name or FINISH.
                 """
