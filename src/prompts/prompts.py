@@ -1,7 +1,6 @@
-
 class PromptsFactory:
     """Factory for all role-specific system prompts."""
-    # TODO: improve prompt such that questions are answered if possible and else forwarded to the user
+    
     @staticmethod
     def supervisor(dynatrace_master_rules: str, dynatrace_query_rules: str) -> str:
         return f"""
@@ -70,6 +69,7 @@ class PromptsFactory:
             - If the user provides an entity by name → resolve with `find_entity_by_name`, then confirm via `get_entity_details`.
             - Always call `verify_dql` before `execute_dql` (mandatory).
             - Forbidden pattern: never use `for` directly after `fetch`.
+            - If the user wants N logs, without specifying the context, then simply get the N last logs of the whole environment.
 
             ### Correct Examples
                 fetch logs | filter entity.id == "<ENTITY_ID>" | limit 10
