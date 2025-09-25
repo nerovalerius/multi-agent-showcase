@@ -39,12 +39,7 @@ load_dotenv(dotenv_path=env_path, override=True)
 Traceloop.init(app_name="multi-agent-showcase")
 
 # TODO: Guardrails einbauen
-# TODO: Prompt verbessern, damit Fragen beantwortet werden, wenn möglich, sonst an User weitergeleitet
-# TODO: traceloop - rejected metric error fixen
-
-# TODO: fetcher und teamleads sollen nachfolge fragen richtig abarbeiten vom mcp server
-
-# TODO: wenn die supervisors fragen bekomen ala next steps, dann sollen sie bevorzugt den nutzer fragen
+# TODO: fetcher soll die dynatrace_documentation maximal 2 mal aufrufen
 
 class State(MessagesState):
     next: str

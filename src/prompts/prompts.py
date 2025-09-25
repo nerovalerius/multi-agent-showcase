@@ -1,5 +1,4 @@
 class PromptsFactory:
-    """Factory für vereinfachte und korrigierte System-Prompts."""
 
     @staticmethod
     def supervisor() -> str:

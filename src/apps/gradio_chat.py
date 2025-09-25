@@ -46,7 +46,7 @@ def build_app():
 
         model_selector = gr.Dropdown(
             ["gpt-5-nano", "gpt-5-mini", "gpt-5"],
-            value="gpt-5-nano",
+            value="gpt-5-mini",
             label="Choose Model",
         )
 
