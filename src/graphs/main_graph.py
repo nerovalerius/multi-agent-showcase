@@ -66,20 +66,20 @@ class MultiAgentGraphFactory():
 
     def init_prompts(self) -> None:
         """Initialize all prompts used in the graph."""
-        self.supervisor_prompt = PromptsFactory.supervisor(dynatrace_master_rules, dynatrace_query_rules)
+        self.supervisor_prompt = PromptsFactory.supervisor()
         self.telemetry_supervisor_prompt = PromptsFactory.telemetry_supervisor()
-        self.telemetry_fetcher_prompt = PromptsFactory.telemetry_fetcher(dynatrace_master_rules, dynatrace_query_rules)
+        self.telemetry_fetcher_prompt = PromptsFactory.telemetry_fetcher()
         self.telemetry_analyst_prompt = PromptsFactory.telemetry_analyst()
         self.problems_supervisor_prompt = PromptsFactory.problems_supervisor()
-        self.problems_fetcher_prompt = PromptsFactory.problems_fetcher(dynatrace_master_rules, dynatrace_problem_rules)
+        self.problems_fetcher_prompt = PromptsFactory.problems_fetcher()
         self.problems_analyst_prompt = PromptsFactory.problems_analyst()
         self.security_supervisor_prompt = PromptsFactory.security_supervisor()
-        self.security_fetcher_prompt = PromptsFactory.security_fetcher(dynatrace_master_rules, dynatrace_vuln_rules)
+        self.security_fetcher_prompt = PromptsFactory.security_fetcher()
         self.security_analyst_prompt = PromptsFactory.security_analyst()
 
     def init_tools(self) -> None:
         """Initialize all tools used in the graph."""
-        self.retriever_tool = RetrieverFactory().create_dynatrace_rules_retriever(search_kwargs={"k": 3})
+        self.retriever_tool = RetrieverFactory().create_dynatrace_rules_retriever(search_kwargs={"k": 4})
         self.mcp_tools = asyncio.run(MCPClientFactory.create_dynatrace_mcp_client())
         self.tools = self.mcp_tools + [self.retriever_tool]
 
