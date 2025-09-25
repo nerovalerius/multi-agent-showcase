@@ -1,6 +1,3 @@
-import os
-# import sys; sys.path.append("..")
-import asyncio
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -59,12 +56,12 @@ class MultiAgentGraphFactory():
         """Initialize the graph factory with the given LLM."""
         self.llm = llm
         self.memory_saver = memory_saver
-        self.init_prompts()
-        self.init_tools() 
-        self.init_agents()
-        self.init_supervisor_nodes()
+        self.mcp_tools = None
+        self.retriever_tool = None
+        self.tools = None
+        self._init_prompts()
 
-    def init_prompts(self) -> None:
+    def _init_prompts(self) -> None:
         """Initialize all prompts used in the graph."""
         self.supervisor_prompt = PromptsFactory.supervisor()
         self.telemetry_supervisor_prompt = PromptsFactory.telemetry_supervisor()
@@ -77,13 +74,14 @@ class MultiAgentGraphFactory():
         self.security_fetcher_prompt = PromptsFactory.security_fetcher()
         self.security_analyst_prompt = PromptsFactory.security_analyst()
 
-    def init_tools(self) -> None:
+    async def init_tools_and_agents(self) -> None:
         """Initialize all tools used in the graph."""
         self.retriever_tool = RetrieverFactory().create_dynatrace_rules_retriever(search_kwargs={"k": 4})
-        self.mcp_tools = asyncio.run(MCPClientFactory.create_dynatrace_mcp_client())
+        self.mcp_tools = await MCPClientFactory.create_dynatrace_mcp_client()
         self.tools = self.mcp_tools + [self.retriever_tool]
+        self._init_agents()
 
-    def init_agents(self) -> None:
+    def _init_agents(self) -> None:
         """Initialize all agents used in the graph."""
         self.telemetry_fetcher_agent = create_react_agent(self.llm, tools=self.tools, prompt=self.telemetry_fetcher_prompt)
         self.telemetry_analyst_agent = create_react_agent(self.llm, tools=[self.retriever_tool], prompt=self.telemetry_analyst_prompt)

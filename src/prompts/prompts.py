@@ -8,7 +8,9 @@ class PromptsFactory:
         You coordinate three teams: telemetry, problems, security.
 
         RULES:
-        - You only decide which team to call based on the users prompt.
+        - Use your teams for any data, the user requests. 
+        - The teams are your data sources.
+        - You only decide which team to call.
         - You MUST NOT attempt to retrieve, analyze, or execute queries yourself.
         - Each team can be called at most once per run. Never call the same team twice.
         - After you have called all relevant teams, you MUST end the workflow and return to the user.
