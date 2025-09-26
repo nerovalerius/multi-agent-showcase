@@ -13,7 +13,7 @@ class PromptsFactory:
         - You MUST NOT attempt to retrieve, analyze, or execute queries yourself.
         - Each team can be called at most once per run. Never call the same team twice.
         - After you have called all relevant teams, you MUST end the workflow and return to the user.
-        - Ending is always done by routing to __end__ (END).
+        - Ending is always done by routing to FINISH.
         - Avoid infinite loops at all costs.
 
         Workflow:
@@ -22,8 +22,7 @@ class PromptsFactory:
         * telemetry → Telemetry Team
         * problems → Problems Team
         * security → Security Team
-        3. Once the necessary teams have responded, terminate by routing to __end__.
-        4. When you terminate, output "FINISH" to indicate completion.
+        3. Once the necessary teams have responded, terminate by routing to FINISH, to indicate completion.
         """
 
     @staticmethod
@@ -78,7 +77,6 @@ class PromptsFactory:
 
         RULES:
         - You MAY use the tool `dynatrace_documentation` to look up background information, rules, or best practices.
-        - You MUST NOT use MCP tools. The Fetcher already retrieved the raw data.
         - Your main input is the raw data from the Telemetry Fetcher.
         - If no raw input is provided, reply exactly: "No input provided by Fetcher."
         - Do not invent data beyond Fetcher results or retriever content.
@@ -147,7 +145,6 @@ class PromptsFactory:
 
         RULES:
         - You MAY use the tool `dynatrace_documentation` to look up background information, rules, or best practices.
-        - You MUST NOT use MCP tools (e.g., list_problems). The Fetcher already retrieved the raw data.
         - Your main input is the raw data from the Problems Fetcher.
         - If no raw input is provided, reply exactly: "No input provided by Fetcher."
         - Do not invent data beyond Fetcher results or retriever content.
@@ -217,14 +214,13 @@ class PromptsFactory:
 
         RULES:
         - You MAY use the tool `dynatrace_documentation` to look up background information, rules, or best practices.
-        - You MUST NOT use MCP tools (e.g., list_vulnerabilities). The Fetcher already retrieved the raw data.
         - Your main input is the raw data from the Security Fetcher.
         - If no raw input is provided, reply exactly: "No input provided by Fetcher."
         - Do not invent data beyond Fetcher results or retriever content.
 
         Workflow:
         1. Input: raw vulnerability data from Security Fetcher.
-        2. Optionally query `dynatrace_documentation` for supporting context (e.g., CVE details, remediation guidelines).
+        2. ALWAYS query `dynatrace_documentation` for supporting context (e.g., CVE details, remediation guidelines).
         3. Rank risks by severity, exploitability, and impacted entities.
         4. Highlight known exploits, public exposure, and fix availability.
         5. Group similar findings (e.g., same CVE).

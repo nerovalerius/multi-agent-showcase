@@ -26,15 +26,11 @@ async def stream_graph_updates(graph: StateGraph, user_input: str):
         config={"recursion_limit": 50, "thread_id": "gradio-session"},
     ):
         for node, value in event.items():
-            reply_chunks.append(f"➡️ **Switched to node:** `{node}`")
             if isinstance(value, dict):
                 if "messages" in value:
                     for msg in value["messages"]:
                         role = "🤖 Assistant" if msg.type == "ai" else "👤 User"
                         reply_chunks.append(f"{role}: {msg.content}")
-                for k, v in value.items():
-                    if k != "messages":
-                        reply_chunks.append(f"🔍 `{k}` → {v}")
             else:
                 reply_chunks.append(f"🔍 Value: {value}")
     return "\n\n".join(reply_chunks)

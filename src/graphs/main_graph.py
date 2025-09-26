@@ -9,7 +9,7 @@ from typing_extensions import TypedDict
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import HumanMessage, HumanMessage
+from langchain_core.messages import AIMessage
 from langgraph.prebuilt import create_react_agent
 from langgraph.graph import StateGraph, START, END, MessagesState
 
@@ -127,7 +127,7 @@ class MultiAgentGraphFactory():
                 ])
                 return Command(
                     update={
-                        "messages": [HumanMessage(content=report.content, name="supervisor")]
+                        "messages": [AIMessage(content=report.content, name="supervisor")]
                     },
                     goto="__end__"
                 )
@@ -145,7 +145,7 @@ class MultiAgentGraphFactory():
         return Command(
             update={
                 "messages": [
-                    HumanMessage(
+                    AIMessage(
                         content=response["messages"][-1].content,
                         name="telemetry_team",
                     )
@@ -163,7 +163,7 @@ class MultiAgentGraphFactory():
         result = await self.telemetry_fetcher_agent.ainvoke(state)
         return Command(
             update={
-                "messages": [HumanMessage(content=result["messages"][-1].content, name="telemetry_fetcher")]
+                "messages": [AIMessage(content=result["messages"][-1].content, name="telemetry_fetcher")]
             },
             # Always report back to supervisor when done
             goto="supervisor"
@@ -178,7 +178,7 @@ class MultiAgentGraphFactory():
         result = await self.telemetry_analyst_agent.ainvoke(state)
         return Command(
             update={
-                "messages": [HumanMessage(content=result["messages"][-1].content, name="telemetry_analyst")]
+                "messages": [AIMessage(content=result["messages"][-1].content, name="telemetry_analyst")]
             },
             # Always report back to supervisor when done
             goto="supervisor"
@@ -194,7 +194,7 @@ class MultiAgentGraphFactory():
         return Command(
             update={
                 "messages": [
-                    HumanMessage(
+                    AIMessage(
                         content=response["messages"][-1].content,
                         name="problems_team",
                     )
@@ -212,7 +212,7 @@ class MultiAgentGraphFactory():
         result = await self.problems_fetcher_agent.ainvoke(state)
         return Command(
             update={
-                "messages": [HumanMessage(content=result["messages"][-1].content, name="problems_fetcher")]
+                "messages": [AIMessage(content=result["messages"][-1].content, name="problems_fetcher")]
             },
             # Always report back to supervisor when done
             goto="supervisor"
@@ -228,7 +228,7 @@ class MultiAgentGraphFactory():
         result = await self.problems_analyst_agent.ainvoke(state)
         return Command(
             update={
-                "messages": [HumanMessage(content=result["messages"][-1].content, name="problems_analyst")]
+                "messages": [AIMessage(content=result["messages"][-1].content, name="problems_analyst")]
             },
             # Always report back to supervisor when done
             goto="supervisor"
@@ -244,7 +244,7 @@ class MultiAgentGraphFactory():
         return Command(
             update={
                 "messages": [
-                    HumanMessage(
+                    AIMessage(
                         content=response["messages"][-1].content,
                         name="security_team",
                     )
@@ -262,7 +262,7 @@ class MultiAgentGraphFactory():
         result = await self.security_fetcher_agent.ainvoke(state)
         return Command(
             update={
-                "messages": [HumanMessage(content=result["messages"][-1].content, name="security_fetcher")]
+                "messages": [AIMessage(content=result["messages"][-1].content, name="security_fetcher")]
             },
             # Always report back to supervisor when done
             goto="supervisor"
@@ -277,7 +277,7 @@ class MultiAgentGraphFactory():
         result = await self.security_analyst_agent.ainvoke(state)
         return Command(
             update={
-                "messages": [HumanMessage(content=result["messages"][-1].content, name="security_analyst")]
+                "messages": [AIMessage(content=result["messages"][-1].content, name="security_analyst")]
             },
             # Always report back to supervisor when done
             goto="supervisor"
