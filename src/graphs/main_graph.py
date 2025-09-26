@@ -104,8 +104,7 @@ class MultiAgentGraphFactory():
             "You are a supervisor tasked with managing a conversation between the"
             f" following workers: {members}. Given the following user request,"
             " respond with the worker to act next. Each worker will perform a"
-            " task and respond with their results and status. When finished,"
-            " respond with FINISH."
+            " task and respond with their results and status."
         ) + external_system_prompt
 
         class Router(TypedDict):
@@ -120,17 +119,7 @@ class MultiAgentGraphFactory():
             response = await llm.with_structured_output(Router).ainvoke(messages)
             goto = response["next"]
             if goto == "FINISH":
-                # team finished? write report!
-                report = await llm.ainvoke([
-                    {"role": "system", "content": "Write a concise, human-readable report summarizing all worker outputs."},
-                    *state["messages"]
-                ])
-                return Command(
-                    update={
-                        "messages": [AIMessage(content=report.content, name="supervisor")]
-                    },
-                    goto="__end__"
-                )
+                goto = END
 
             return Command(goto=goto, update={"next": goto})
         
