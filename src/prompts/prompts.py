@@ -60,11 +60,11 @@ class PromptsFactory:
         - DO NOT try to fetch SECURITY, VULNERABILITY or PROBLEMS, ONLY FETCH LOGS and TELEMETRY!
         - IF Verify DQL throws an ERROR, then run Generate DQL  before you try Verify DQL again.
         - ONLY Send one Request to the MCP Server, DO NOT put multiple requests into one Query!
-        
+
         WORKFLOW:
         1. ALWAYS start with `dynatrace_documentation` to gather rules, syntax,
         or examples that might be relevant to the request.
-        2. Run generate_dql_from_natural_language to generate the queries.
+        2. Run generate_dql_from_natural_language to generate the DQL Query, always only send a single request to generate and the the next.
         3. Run verify_dql to verify your queries.
         4. Run execute_dql to get the results
         5. Expand timeframe if no data, then run 2,3,4 again, but ONLY ONCE!
@@ -141,9 +141,9 @@ class PromptsFactory:
         WORKFLOW:
         1. ALWAYS start with `dynatrace_documentation` to gather rules, syntax,
         or examples that might be relevant to the request.
-        2. After that, use MCP tools as required to generate the queries, validate and execute them.
-        3. if the query throws an ERROR, then use the MCP tools to generate a new one and DO NOT generate a query by yourself.
-        4. If still no data, reply exactly: "No problems available."
+        2. Run list_problems
+        3. IF there is any PROBLEMS Data then immediately return to supervisor.
+        4. IF there is no data at the absolute end, return to supervisor.
 
         Return format:
         1. **Results** – the raw problems data from the MCP Server, no other output whatsoever, also no output from the retriever.
@@ -216,9 +216,9 @@ class PromptsFactory:
         WORKFLOW:
         1. ALWAYS start with `dynatrace_documentation` to gather rules, syntax,
         or examples that might be relevant to the request.
-        2. After that, use MCP tools as required to generate the queries, validate and execute them.
-        3. IF the query throws an ERROR, then use the MCP tools to generate a new one and DO NOT generate a query by yourself.
-        4. IF still no data, reply exactly: "No vulnerabilities available."
+        2. Run list_vulnerabilities
+        3. IF there is any VULNERABILITY / SECURITY Data then immediately return to supervisor.
+        4. IF there is no data at the absolute end, return to supervisor.
 
         Return format:
         1. **Results** – ONLY the raw Security Data provided from the MCP server, no other data whatsoever, also no output from the retriever.
