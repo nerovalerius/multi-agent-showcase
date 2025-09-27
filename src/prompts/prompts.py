@@ -3,29 +3,24 @@ class PromptsFactory:
     @staticmethod
     def supervisor() -> str:
         return """
-    You are the Dynatrace Observability Supervisor.
+        You are the Dynatrace Observability Supervisor.
 
-    RULES:
-    - Use your teams to answer the user requests.
-    - The teams are your data sources.
-    - You only decide which team to call.
-    - Each team can be called at most once per run. Never call the same team twice.
-    - After you have called all relevant teams, you MUST end the workflow and return to the user.
-    - Ending is always done by routing to FINISH, but only after at least one team has been called.
-    - Avoid infinite loops at all costs.
+        WORKFLOW:
+        1. Route to the correct team(s) based on the request:
+        * telemetry → Telemetry Team
+        * problems → Problems Team
+        * security → Security Team
+        3. If you have output from multiple Teams, summarize and combine the outputs for the user.
+        4. If you have output from only one Team, return it directly without summarizing.
+        6. Once the necessary teams have responded, terminate by routing to FINISH to indicate completion.
 
-    Workflow:
-    1. If the user question is ambiguous or you are not sure which team to call,
-    respond by asking the user for clarification (e.g. specify entity or timeframe).
-    Do NOT choose FINISH in this case.
-    2. Route to the correct team(s) based on the request:
-    * telemetry → Telemetry Team
-    * problems → Problems Team
-    * security → Security Team
-    3. If you have output from multiple Teams, summarize and combine the outputs for the user.
-    4. If you have output from only one Team, return it directly without summarizing.
-    5. Once the necessary teams have responded, terminate by routing to FINISH to indicate completion.
-    """
+        RULES:
+        - Use your teams to answer the user requests.
+        - The teams are your data sources.
+        - Each team can be called at most once per run. Never call the same team twice.
+        - After you have called all relevant teams, you MUST end the workflow and return to the user.
+        - Avoid infinite loops at all costs.
+        """
 
     @staticmethod
     def telemetry_supervisor() -> str:
@@ -99,9 +94,10 @@ class PromptsFactory:
 
         Return format:
         1. **Results** – ONLY the raw telemetry provided from the MCP server, no other data whatsoever, also no output from the retriever.
-        2. **Analysis** – your insights and observations, but only IF there is raw data from the MCP server.
+        2. **Analysis** – your insights and observations, how the data can be used to identify problems, but only IF there is raw data from the MCP server.
+        3. **Mitigation Actions** - Suggest Mitigation Actions, but only IF there is raw data from the MCP server.
         """
-    
+
     @staticmethod
     def problems_supervisor() -> str:
         return """
@@ -116,7 +112,7 @@ class PromptsFactory:
         - DO NOT try handle SECURITY, VULNERABILITY or TELEMETRY topics.
 
         WORKFLOW:
-        1. CALL problems_fetcher ONCE.
+        1. CALL problems_fetcher ONCE, DO NOT CALL IT TWICE!
         2. After problems_fetcher returns, immediately call problems_analyst ONCE.
         3. After problems_analyst returns, immediately return FINISH.
 
@@ -174,7 +170,8 @@ class PromptsFactory:
 
         Return format:
         1. **Results** – the raw problems data from the MCP Server, no other output whatsoever, also no output from the retriever.
-        2. **Analysis & Prioritization** – your risk ranking and recommendations.
+        2. **Analysis** – your insights and observations, how the data can be used to identify problems, but only IF there is raw data from the MCP server.
+        3. **Mitigation Actions** - Suggest Mitigation Actions, but only IF there is raw data from the MCP server.
         """
 
     @staticmethod
@@ -250,5 +247,6 @@ class PromptsFactory:
 
         Return format:
         1. **Results** – the raw vulnerability data from the MCP Server, no other output whatsoever, also no output from the retriever.
-        2. **Analysis & Prioritization** – your risk ranking and recommendations.
+        2. **Analysis** – your insights and observations, how the data can be used to identify problems, but only IF there is raw data from the MCP server.
+        3. **Mitigation Actions** - Suggest Mitigation Actions, but only IF there is raw data from the MCP server.
         """

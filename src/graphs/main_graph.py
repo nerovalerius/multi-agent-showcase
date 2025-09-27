@@ -1,10 +1,9 @@
 from pathlib import Path
 from dotenv import load_dotenv
-
 from traceloop.sdk import Traceloop
 
 from typing import Literal
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, NotRequired
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
@@ -87,42 +86,82 @@ class MultiAgentGraphFactory():
         
     def init_supervisor_nodes(self) -> None:
         """Initialize all supervisor nodes used in the graph."""
-        self.teams_supervisor_node = self.make_supervisor_node(self.llm, ["telemetry_team", "security_team", "problems_team"], tools=[self.retriever_tool], external_system_prompt=self.supervisor_prompt)
-        self.telemetry_supervisor_node = self.make_supervisor_node(self.llm, ["telemetry_fetcher", "telemetry_analyst"], tools=[self.retriever_tool], external_system_prompt=self.telemetry_supervisor_prompt)
-        self.problems_supervisor_node = self.make_supervisor_node(self.llm, ["problems_fetcher", "problems_analyst"], tools=[self.retriever_tool], external_system_prompt=self.problems_supervisor_prompt)
-        self.security_supervisor_node = self.make_supervisor_node(self.llm, ["security_fetcher", "security_analyst"], tools=[self.retriever_tool], external_system_prompt=self.security_supervisor_prompt)
+        self.teams_supervisor_node = self.make_supervisor_node(self.llm, ["telemetry_team", "security_team", "problems_team"],
+                                                                tools=[self.retriever_tool],
+                                                                external_system_prompt=self.supervisor_prompt,
+                                                                emit_finish_message=True,
+                                                                name="teams_supervisor")
+        self.telemetry_supervisor_node = self.make_supervisor_node(self.llm, ["telemetry_fetcher", "telemetry_analyst"],
+                                                                    tools=[self.retriever_tool],
+                                                                    external_system_prompt=self.telemetry_supervisor_prompt,
+                                                                    emit_finish_message=False,
+                                                                    name="telemetry_supervisor")
+        self.problems_supervisor_node = self.make_supervisor_node(self.llm, ["problems_fetcher", "problems_analyst"],
+                                                                    tools=[self.retriever_tool],
+                                                                    external_system_prompt=self.problems_supervisor_prompt,
+                                                                    emit_finish_message=False,
+                                                                    name="problems_supervisor")
+        self.security_supervisor_node = self.make_supervisor_node(self.llm, ["security_fetcher", "security_analyst"],
+                                                                    tools=[self.retriever_tool],
+                                                                    external_system_prompt=self.security_supervisor_prompt,
+                                                                    emit_finish_message=False,
+                                                                    name="security_supervisor")
 
     ############################################
     # Supervisor Maker
     ############################################
-    def make_supervisor_node(self, llm: BaseChatModel, members: list[str], tools: list = None, external_system_prompt: str = None) -> str:
-        """Creates a supervisor node that can manage a team of workers."""
+    def make_supervisor_node(
+        self,
+        llm: BaseChatModel,
+        members: list[str],
+        tools: list = None,
+        external_system_prompt: str = None,
+        emit_finish_message: bool = False, 
+        name: str = ""
+    ) -> str:
         llm = llm.bind_tools(tools) if tools else llm
         options = ["FINISH"] + members
 
-        system_prompt = (
-            "You are a supervisor tasked with managing a conversation between the"
-            f" following workers: {members}. Given the following user request,"
-            " respond with the worker to act next. Each worker will perform a"
-            " task and respond with their results and status."
-        ) + external_system_prompt
+        base_prompt = (
+            "You are a supervisor managing: {members}. "
+            "Given the user request, respond with the worker to act next."
+        ).format(members=members)
 
+        master_supervisor = (
+            "If no worker is needed, choose FINISH and provide a short useful final_message. "
+            "If the request is vague or about capabilities, FINISH with a one-sentence capability summary "
+            "or one clarifying question (entity, timeframe). Never FINISH without final_message."
+            "If the user asks for a summary, provide it with a useful final_message and choose FINISH"
+        ) if emit_finish_message else ""
+
+        system_prompt = base_prompt + (external_system_prompt or "") + master_supervisor
+    
         class Router(TypedDict):
-            """Worker to route to next. If no workers needed, route to FINISH."""
             next: Literal[*options]
+            if emit_finish_message:
+                final_message: str
 
         async def supervisor_node(state: State) -> Command[Literal[*members, "__end__"]]:
-            """An LLM-based router."""
-            messages = [
-                {"role": "system", "content": system_prompt},
-            ] + state["messages"]
+            print(f"DEBUG: {name}")
+            print("DEBUG:          |")
+            messages = [{"role": "system", "content": system_prompt}] + state["messages"]
             response = await llm.with_structured_output(Router).ainvoke(messages)
-            goto = response["next"]
-            if goto == "FINISH":
-                goto = END
+            nxt = response["next"]
+            if nxt == "FINISH":
+                if emit_finish_message:
+                    print("DEBUG:        User")
+                    print("DEBUG:          |")
+                    msg = response.get("final_message")
+                    return Command(
+                        goto=END,
+                        update={
+                            "messages": [AIMessage(content=msg, name="supervisor")],
+                            "next": "FINISH",
+                        },
+                    )
+                return Command(goto=END, update={"next": "FINISH"})
+            return Command(goto=nxt, update={"next": nxt})
 
-            return Command(goto=goto, update={"next": goto})
-        
         return supervisor_node
     
     ############################################
@@ -130,7 +169,6 @@ class MultiAgentGraphFactory():
     ############################################
     async def call_telemetry_team(self, state: State) -> Command[Literal["supervisor"]]:
         response = await self.telemetry_graph.ainvoke({"messages": [state["messages"][-1]]})
-        print("DEBUG: call_telemetry_team")
         return Command(
             update={
                 "messages": [
@@ -148,7 +186,8 @@ class MultiAgentGraphFactory():
     ################################### 
     async def telemetry_fetcher_node(self, state: State) -> Command[Literal["supervisor"]]:
         """Fetch telemetry by using the dynatrace_mcp tool to run DQL/Grail queries for logs, traces, and metrics."""
-        print("DEBUG: telemetry_fetcher_node")
+        print("DEBUG: telemetry_fetcher")
+        print("DEBUG:          |")
         result = await self.telemetry_fetcher_agent.ainvoke(state)
         return Command(
             update={
@@ -163,7 +202,8 @@ class MultiAgentGraphFactory():
     ###################################
     async def telemetry_analyst_node(self, state: State) -> Command[Literal["supervisor"]]:
         """Analyze telemetry data given by the Telemetry Fetcher and produce insights."""
-        print("DEBUG: telemetry_analyst_node")
+        print("DEBUG: telemetry_analyst")
+        print("DEBUG:          |")
         result = await self.telemetry_analyst_agent.ainvoke(state)
         return Command(
             update={
@@ -179,7 +219,6 @@ class MultiAgentGraphFactory():
     ############################################
     async def call_problems_team(self, state: State) -> Command[Literal["supervisor"]]:
         response = await self.problems_graph.ainvoke({"messages": [state["messages"][-1]]})
-        print("DEBUG: call_problems_team")
         return Command(
             update={
                 "messages": [
@@ -197,7 +236,8 @@ class MultiAgentGraphFactory():
     ###################################
     async def problems_fetcher_node(self, state: State) -> Command[Literal["supervisor"]]:
         """Fetch problems by using the dynatrace_mcp tool to run list_problems."""
-        print("DEBUG: problems_fetcher_node")
+        print("DEBUG: problems_fetcher")
+        print("DEBUG:          |")
         result = await self.problems_fetcher_agent.ainvoke(state)
         return Command(
             update={
@@ -211,9 +251,9 @@ class MultiAgentGraphFactory():
     # Problems Analyst
     ###################################
     async def problems_analyst_node(self, state: State) -> Command[Literal["supervisor"]]:
-        # problems_mitigator – derive prioritized actions/runbook steps
         """Analyze problems data given by the Problems Fetcher and produce insights."""
-        print("DEBUG: problems_analyst_node")
+        print("DEBUG: problems_analyst")
+        print("DEBUG:          |")
         result = await self.problems_analyst_agent.ainvoke(state)
         return Command(
             update={
@@ -229,7 +269,6 @@ class MultiAgentGraphFactory():
     ############################################
     async def call_security_team(self, state: State) -> Command[Literal["supervisor"]]:
         response = await self.security_graph.ainvoke({"messages": [state["messages"][-1]]})
-        print("DEBUG: call_security_team")
         return Command(
             update={
                 "messages": [
@@ -247,7 +286,8 @@ class MultiAgentGraphFactory():
     ###################################
     async def security_fetcher_node(self, state: State) -> Command[Literal["supervisor"]]:
         """Fetch security issues by using the dynatrace_mcp tool to run list_vulnerabilities."""
-        print("DEBUG: security_fetcher_node")
+        print("DEBUG: security_fetcher")
+        print("DEBUG:          |")
         result = await self.security_fetcher_agent.ainvoke(state)
         return Command(
             update={
@@ -262,7 +302,6 @@ class MultiAgentGraphFactory():
     ###################################
     async def security_analyst_node(self, state: State) -> Command[Literal["supervisor"]]:
         """Analyze vulnerability data given by the Security Fetcher and produce insights."""
-        print("DEBUG: security_analyst_node")
         result = await self.security_analyst_agent.ainvoke(state)
         return Command(
             update={
