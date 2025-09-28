@@ -53,20 +53,6 @@ class MultiAgentGraphFactory():
         self.mcp_tools = None
         self.retriever_tool = None
         self.tools = None
-        self._init_prompts()
-
-    def _init_prompts(self) -> None:
-        """Initialize all prompts used in the graph."""
-        self.supervisor_prompt = PromptsFactory.supervisor()
-        self.telemetry_supervisor_prompt = PromptsFactory.telemetry_supervisor()
-        self.telemetry_fetcher_prompt = PromptsFactory.telemetry_fetcher()
-        self.telemetry_analyst_prompt = PromptsFactory.telemetry_analyst()
-        self.problems_supervisor_prompt = PromptsFactory.problems_supervisor()
-        self.problems_fetcher_prompt = PromptsFactory.problems_fetcher()
-        self.problems_analyst_prompt = PromptsFactory.problems_analyst()
-        self.security_supervisor_prompt = PromptsFactory.security_supervisor()
-        self.security_fetcher_prompt = PromptsFactory.security_fetcher()
-        self.security_analyst_prompt = PromptsFactory.security_analyst()
 
     async def init_tools_and_agents(self) -> None:
         """Initialize all tools used in the graph."""
@@ -77,35 +63,42 @@ class MultiAgentGraphFactory():
 
     def _init_agents(self) -> None:
         """Initialize all agents used in the graph."""
-        self.telemetry_fetcher_agent = create_react_agent(self.llm, tools=self.tools, prompt=self.telemetry_fetcher_prompt)
-        self.telemetry_analyst_agent = create_react_agent(self.llm, tools=[self.retriever_tool], prompt=self.telemetry_analyst_prompt)
-        self.problems_fetcher_agent = create_react_agent(self.llm, tools=self.tools, prompt=self.problems_fetcher_prompt)
-        self.security_analyst_agent = create_react_agent(self.llm, tools=[self.retriever_tool], prompt=self.security_analyst_prompt)
-        self.security_fetcher_agent = create_react_agent(self.llm, tools=self.tools, prompt=self.security_fetcher_prompt)
-        self.problems_analyst_agent = create_react_agent(self.llm, tools=[self.retriever_tool], prompt=self.problems_analyst_prompt)
+        self.telemetry_fetcher_agent = create_react_agent(self.llm, tools=self.tools, prompt=PromptsFactory.telemetry_fetcher())
+        self.telemetry_analyst_agent = create_react_agent(self.llm, tools=[self.retriever_tool], prompt=PromptsFactory.telemetry_analyst())
+        self.problems_fetcher_agent = create_react_agent(self.llm, tools=self.tools, prompt=PromptsFactory.problems_fetcher())
+        self.problems_analyst_agent = create_react_agent(self.llm, tools=[self.retriever_tool], prompt=PromptsFactory.problems_analyst())
+        self.security_fetcher_agent = create_react_agent(self.llm, tools=self.tools, prompt=PromptsFactory.security_fetcher())
+        self.security_analyst_agent = create_react_agent(self.llm, tools=[self.retriever_tool], prompt=PromptsFactory.security_analyst())
+        self.devops_fetcher_agent = create_react_agent(self.llm, tools=self.tools, prompt=PromptsFactory.devops_fetcher())
+        self.devops_analyst_agent = create_react_agent(self.llm, tools=[self.retriever_tool], prompt=PromptsFactory.devops_analyst())
         
     def init_supervisor_nodes(self) -> None:
         """Initialize all supervisor nodes used in the graph."""
-        self.teams_supervisor_node = self.make_supervisor_node(self.llm, ["telemetry_team", "security_team", "problems_team"],
+        self.teams_supervisor_node = self.make_supervisor_node(self.llm, ["telemetry_team", "security_team", "problems_team", "devops_team"],
                                                                 tools=[self.retriever_tool],
-                                                                external_system_prompt=self.supervisor_prompt,
+                                                                external_system_prompt=PromptsFactory.supervisor(),
                                                                 emit_finish_message=True,
                                                                 name="teams_supervisor")
         self.telemetry_supervisor_node = self.make_supervisor_node(self.llm, ["telemetry_fetcher", "telemetry_analyst"],
                                                                     tools=[self.retriever_tool],
-                                                                    external_system_prompt=self.telemetry_supervisor_prompt,
+                                                                    external_system_prompt=PromptsFactory.telemetry_supervisor(),
                                                                     emit_finish_message=False,
                                                                     name="telemetry_supervisor")
         self.problems_supervisor_node = self.make_supervisor_node(self.llm, ["problems_fetcher", "problems_analyst"],
                                                                     tools=[self.retriever_tool],
-                                                                    external_system_prompt=self.problems_supervisor_prompt,
+                                                                    external_system_prompt=PromptsFactory.problems_supervisor(),
                                                                     emit_finish_message=False,
                                                                     name="problems_supervisor")
         self.security_supervisor_node = self.make_supervisor_node(self.llm, ["security_fetcher", "security_analyst"],
                                                                     tools=[self.retriever_tool],
-                                                                    external_system_prompt=self.security_supervisor_prompt,
+                                                                    external_system_prompt=PromptsFactory.security_supervisor(),
                                                                     emit_finish_message=False,
                                                                     name="security_supervisor")
+        self.devops_supervisor_node = self.make_supervisor_node(self.llm, ["devops_fetcher", "devops_analyst"],
+                                                                    tools=[self.retriever_tool],
+                                                                    external_system_prompt=PromptsFactory.devops_supervisor(),
+                                                                    emit_finish_message=False,
+                                                                    name="devops_supervisor")
 
     ############################################
     # Supervisor Maker
@@ -310,6 +303,55 @@ class MultiAgentGraphFactory():
             # Always report back to supervisor when done
             goto="supervisor"
         )
+    
+    ############################################
+    # DevOps Team
+    ############################################
+    async def call_devops_team(self, state: State) -> Command[Literal["supervisor"]]:
+        response = await self.devops_graph.ainvoke({"messages": [state["messages"][-1]]})
+        return Command(
+            update={
+                "messages": [
+                    AIMessage(
+                        content=response["messages"][-1].content,
+                        name="devops_team",
+                    )
+                ]
+            },
+            goto="supervisor",
+        )
+
+    ###################################
+    # DevOps Fetcher
+    ###################################
+    async def devops_fetcher_node(self, state: State) -> Command[Literal["supervisor"]]:
+        """Fetch DevOps/SRE data such as deployments, SLO/SLI, error budgets, and pipeline health using the dynatrace_mcp tool."""
+        print("DEBUG: devops_fetcher")
+        print("DEBUG:          |")
+        result = await self.devops_fetcher_agent.ainvoke(state)
+        return Command(
+            update={
+                "messages": [AIMessage(content=result["messages"][-1].content, name="devops_fetcher")]
+            },
+            # Always report back to supervisor when done
+            goto="supervisor"
+        )
+
+    ###################################
+    # DevOps Analyst
+    ###################################
+    async def devops_analyst_node(self, state: State) -> Command[Literal["supervisor"]]:
+        """Analyze DevOps/SRE data from the Fetcher and produce insights such as health gate status, error budget consumption, and mitigation recommendations."""
+        print("DEBUG: devops_analyst")
+        print("DEBUG:          |")
+        result = await self.devops_analyst_agent.ainvoke(state)
+        return Command(
+            update={
+                "messages": [AIMessage(content=result["messages"][-1].content, name="devops_analyst")]
+            },
+            # Always report back to supervisor when done
+            goto="supervisor"
+        )
 
     async def build_graph(self) -> StateGraph:
 
@@ -342,6 +384,16 @@ class MultiAgentGraphFactory():
         self.security_builder.add_node("security_analyst", self.security_analyst_node)
         self.security_builder.add_edge(START, "supervisor")
         self.security_graph = self.security_builder.compile()
+
+        #############################################
+        # Build DevOps Subgraph
+        #############################################
+        self.devops_builder = StateGraph(State)
+        self.devops_builder.add_node("supervisor", self.devops_supervisor_node)
+        self.devops_builder.add_node("devops_fetcher", self.devops_fetcher_node)
+        self.devops_builder.add_node("devops_analyst", self.devops_analyst_node)
+        self.devops_builder.add_edge(START, "supervisor")
+        self.devops_graph = self.devops_builder.compile()
         
         ############################################
         # Build Main Graph
@@ -351,6 +403,7 @@ class MultiAgentGraphFactory():
         self.super_builder.add_node("telemetry_team", self.call_telemetry_team)
         self.super_builder.add_node("problems_team", self.call_problems_team)
         self.super_builder.add_node("security_team", self.call_security_team)
+        self.super_builder.add_node("devops_team", self.call_devops_team)
         self.super_builder.add_edge(START, "supervisor")
 
         return self.super_builder.compile(checkpointer=self.memory_saver)
