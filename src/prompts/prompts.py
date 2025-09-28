@@ -39,11 +39,9 @@ class PromptsFactory:
         - DO NOT try handle SECURITY, VULNERABILITY or PROBLEM topics.
 
         WORKFLOW:
-        1. CALL telemetry_fetcher once.
+        1. CALL telemetry_fetcher ONCE.
         2. After telemetry_fetcher returns, immediately call telemetry_analyst ONCE.
-        3. DO NOT CALL telemetry_fetcher again!
-        4. DO NOT CALL telemetry_analyst again!
-        5. ALWAYS After telemetry_analyst returns, immediately return FINISH, regardless if there is any result or not.
+        3. After telemetry_analyst returns, immediately return FINISH.
 
         OUTPUT:
         - Only return the next worker name (telemetry_fetcher or telemetry_analyst) or FINISH.
@@ -119,11 +117,9 @@ class PromptsFactory:
         - DO NOT try handle SECURITY, VULNERABILITY or TELEMETRY topics.
 
         WORKFLOW:
-        1. CALL problems_fetcher once.
+        1. CALL problems_fetcher ONCE, DO NOT CALL IT TWICE!
         2. After problems_fetcher returns, immediately call problems_analyst ONCE.
-        3. DO NOT CALL problems_fetcher again!
-        4. DO NOT CALL problems_analyst again!
-        5. ALWAYS After problems_analyst returns, immediately return FINISH, regardless if there is any result or not.
+        3. ALWAYS After problems_analyst returns, immediately return FINISH, regardless if there is any result or not.
 
         Output:
         - Only return the next worker name (problems_fetcher or problems_analyst) or FINISH.
@@ -140,7 +136,7 @@ class PromptsFactory:
         - If you add any sentences beyond raw results, your answer is invalid.
         - Only extend your search when getting data twice, if you dont get data the first time, in order to be faster.
         - DO NOT try to fetch SECURITY, VULNERABILITY or TELEMETRY data.
-        - IF Verify DQL throws an ERROR, then run Generate DQL before you try Verify DQL again.
+        - IF Verify DQL throws an ERROR, then run Generate DQL  before you try Verify DQL again.
         - ONLY Send one Request to the MCP Server, DO NOT put multiple requests into one Query!
 
         WORKFLOW:
@@ -197,12 +193,10 @@ class PromptsFactory:
         - DO NOT try handle TELEMETRY or PROBLEMS.
 
         WORKFLOW:
-        1. CALL security_fetcher once.
+        1. CALL security_fetcher ONCE.
         2. After security_fetcher returns, immediately call security_analyst ONCE.
-        3. DO NOT CALL security_fetcher again!
-        4. DO NOT CALL security_analyst again!
-        5. ALWAYS After security_analyst returns, immediately return FINISH, regardless if there is any result or not.
-
+        3. ALWAYS After security_analyst returns, immediately return FINISH, regardless if there is any result or not.
+        
         Output:
         - Only return the next worker name (security_fetcher or security_analyst) or FINISH.
         """
@@ -275,11 +269,9 @@ class PromptsFactory:
         - DO NOT try to handle SECURITY, TELEMETRY or PROBLEMS topics.
 
         WORKFLOW:
-        1. CALL devops_fetcher once.
+        1. CALL devops_fetcher ONCE.
         2. After devops_fetcher returns, immediately call devops_analyst ONCE.
-        3. DO NOT CALL devops_fetcher again!
-        4. DO NOT CALL devops_analyst again!
-        5. ALWAYS After devops_analyst returns, immediately return FINISH, regardless if there is any result or not.
+        3. ALWAYS After devops_analyst returns, immediately return FINISH, regardless if there is any result or not.
 
         OUTPUT:
         - Only return the next worker name (devops_fetcher or devops_analyst) or FINISH.

@@ -26,6 +26,9 @@ are there any problems?
 ```
 do i have security issues?
 ```
+```
+whats the devops status?
+```
 
 ```
 give me a status update on deployment/SRE (SLOs, health gates, error budgets)
@@ -33,11 +36,11 @@ give me a status update on deployment/SRE (SLOs, health gates, error budgets)
 
 ## Long examples
 ```
-Give me a full environment status of the last minute:
-- open problems
-- telemetry anomalies (logs/metrics/traces)
-- vulnerabilities or compliance issues
-- deployment/SRE status (SLOs, health gates, error budgets)
+Give me the environment status:
+- open problems 
+- telemetry (logs/metrics/traces) (only the last 3 logs)
+- vulnerabilities
+- deployment/SRE status (SLOs, health gates)
 
 Provide one consolidated summary at the end.
 ```
