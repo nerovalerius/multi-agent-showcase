@@ -19,6 +19,7 @@ from langgraph.graph import StateGraph, START, END, MessagesState
 from src.tools.retrievers import RetrieverFactory
 from src.tools.mcp_servers import MCPClientFactory
 from src.prompts.prompts import PromptsFactory
+from src.tools.guardrails import BlockTerms
 
 root_dir = Path(__file__).resolve().parents[2]
 env_path = root_dir / ".env"
@@ -51,7 +52,8 @@ class MultiAgentGraphFactory():
         self.tools = None
         self.guard = AsyncGuard().use_many(
             ToxicLanguage(threshold=0.5),
-            ProfanityFree()
+            ProfanityFree(),
+            BlockTerms(["datadog", "data dog"])
         )
 
     async def init_tools_and_agents(self) -> None:

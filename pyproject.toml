@@ -6,13 +6,14 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "gradio>=5.47.0",
-    "guardrails-ai>=0.6.7",
+    "guardrails-ai[hub]>=0.6.7",
     "langchain>=0.3.27",
     "langchain-community>=0.3.29",
     "langchain-mcp>=0.2.1",
     "langchain-mcp-adapters>=0.1.10",
     "langgraph>=0.6.7",
     "nest-asyncio>=1.6.0",
+    "nltk>=3.9.1",
     "python-dotenv>=1.1.1",
     "traceloop-sdk>=0.47.3",
 ]
