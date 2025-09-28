@@ -22,14 +22,6 @@ from src.prompts.prompts import PromptsFactory
 
 root_dir = Path(__file__).resolve().parents[2]
 env_path = root_dir / ".env"
-dynatrace_rules_dir = Path(__file__).resolve().parents[2] / "dynatrace_rules"
-dynatrace_master_rules = (dynatrace_rules_dir / "DynatraceMcpIntegration.md").read_text(encoding="utf-8")
-dynatrace_query_rules = (dynatrace_rules_dir / "reference" / "DynatraceQueryLanguage.md").read_text(encoding="utf-8")
-dynatrace_problem_rules = (dynatrace_rules_dir / "reference" / "DynatraceProblemsSpec.md").read_text(encoding="utf-8")
-dynatrace_vuln_rules = (dynatrace_rules_dir / "reference" / "DynatraceSecurityEvents.md").read_text(encoding="utf-8")
-dynatrace_incident_response = (dynatrace_rules_dir / "workflows" / "DynatraceIncidentResponse.md").read_text(encoding="utf-8")
-dynatrace_investigation_checklist = (dynatrace_rules_dir / "workflows" / "DynatraceInvestigationChecklist.md").read_text(encoding="utf-8")
-dynatrace_security_compliance = (dynatrace_rules_dir / "workflows" / "DynatraceSecurityCompliance.md").read_text(encoding="utf-8")
 
 #####################################
 # Load environment variables
@@ -64,46 +56,83 @@ class MultiAgentGraphFactory():
 
     async def init_tools_and_agents(self) -> None:
         """Initialize all tools used in the graph."""
-        self.retriever_tool = RetrieverFactory().create_dynatrace_rules_retriever(search_kwargs={"k": 4})
         self.mcp_tools = await MCPClientFactory.create_dynatrace_mcp_client()
-        self.tools = self.mcp_tools + [self.retriever_tool]
+        self.retrievers = RetrieverFactory().create_tool_dict()
         self._init_agents()
 
     def _init_agents(self) -> None:
         """Initialize all agents used in the graph."""
-        self.telemetry_fetcher_agent = create_react_agent(self.llm, tools=self.tools, prompt=PromptsFactory.telemetry_fetcher())
-        self.telemetry_analyst_agent = create_react_agent(self.llm, tools=[self.retriever_tool], prompt=PromptsFactory.telemetry_analyst())
-        self.problems_fetcher_agent = create_react_agent(self.llm, tools=self.tools, prompt=PromptsFactory.problems_fetcher())
-        self.problems_analyst_agent = create_react_agent(self.llm, tools=[self.retriever_tool], prompt=PromptsFactory.problems_analyst())
-        self.security_fetcher_agent = create_react_agent(self.llm, tools=self.tools, prompt=PromptsFactory.security_fetcher())
-        self.security_analyst_agent = create_react_agent(self.llm, tools=[self.retriever_tool], prompt=PromptsFactory.security_analyst())
-        self.devops_fetcher_agent = create_react_agent(self.llm, tools=self.tools, prompt=PromptsFactory.devops_fetcher())
-        self.devops_analyst_agent = create_react_agent(self.llm, tools=[self.retriever_tool], prompt=PromptsFactory.devops_analyst())
-        
+        self.telemetry_fetcher_agent = create_react_agent(
+            self.llm,
+            tools=[self.retrievers["telemetry"], self.retrievers["common"]] + self.mcp_tools,
+            prompt=PromptsFactory.telemetry_fetcher(),
+        )
+
+        self.telemetry_analyst_agent = create_react_agent(
+            self.llm,
+            tools=[self.retrievers["telemetry"], self.retrievers["common"]],
+            prompt=PromptsFactory.telemetry_analyst(),
+        )
+
+        self.problems_fetcher_agent = create_react_agent(
+            self.llm,
+            tools=[self.retrievers["problems"], self.retrievers["common"]] + self.mcp_tools,
+            prompt=PromptsFactory.problems_fetcher(),
+        )
+
+        self.problems_analyst_agent = create_react_agent(
+            self.llm,
+            tools=[self.retrievers["problems"], self.retrievers["common"]],
+            prompt=PromptsFactory.problems_analyst(),
+        )
+
+        self.security_fetcher_agent = create_react_agent(
+            self.llm,
+            tools=[self.retrievers["security"], self.retrievers["common"]] + self.mcp_tools,
+            prompt=PromptsFactory.security_fetcher(),
+        )
+
+        self.security_analyst_agent = create_react_agent(
+            self.llm,
+            tools=[self.retrievers["security"], self.retrievers["common"]],
+            prompt=PromptsFactory.security_analyst(),
+        )
+
+        self.devops_fetcher_agent = create_react_agent(
+            self.llm,
+            tools=[self.retrievers["devops"], self.retrievers["common"]] + self.mcp_tools,
+            prompt=PromptsFactory.devops_fetcher(),
+        )
+
+        self.devops_analyst_agent = create_react_agent(
+            self.llm,
+            tools=[self.retrievers["devops"], self.retrievers["common"]],
+            prompt=PromptsFactory.devops_analyst(),
+        )
     def init_supervisor_nodes(self) -> None:
         """Initialize all supervisor nodes used in the graph."""
         self.teams_supervisor_node = self.make_supervisor_node(self.llm, ["telemetry_team", "security_team", "problems_team", "devops_team"],
-                                                                tools=[self.retriever_tool],
+                                                                tools=[self.retrievers["common"]],
                                                                 external_system_prompt=PromptsFactory.supervisor(),
                                                                 emit_finish_message=True,
                                                                 name="teams_supervisor")
         self.telemetry_supervisor_node = self.make_supervisor_node(self.llm, ["telemetry_fetcher", "telemetry_analyst"],
-                                                                    tools=[self.retriever_tool],
+                                                                    tools=[self.retrievers["common"]],
                                                                     external_system_prompt=PromptsFactory.telemetry_supervisor(),
                                                                     emit_finish_message=False,
                                                                     name="telemetry_supervisor")
         self.problems_supervisor_node = self.make_supervisor_node(self.llm, ["problems_fetcher", "problems_analyst"],
-                                                                    tools=[self.retriever_tool],
+                                                                    tools=[self.retrievers["common"]],
                                                                     external_system_prompt=PromptsFactory.problems_supervisor(),
                                                                     emit_finish_message=False,
                                                                     name="problems_supervisor")
         self.security_supervisor_node = self.make_supervisor_node(self.llm, ["security_fetcher", "security_analyst"],
-                                                                    tools=[self.retriever_tool],
+                                                                    tools=[self.retrievers["common"]],
                                                                     external_system_prompt=PromptsFactory.security_supervisor(),
                                                                     emit_finish_message=False,
                                                                     name="security_supervisor")
         self.devops_supervisor_node = self.make_supervisor_node(self.llm, ["devops_fetcher", "devops_analyst"],
-                                                                    tools=[self.retriever_tool],
+                                                                    tools=[self.retrievers["common"]],
                                                                     external_system_prompt=PromptsFactory.devops_supervisor(),
                                                                     emit_finish_message=False,
                                                                     name="devops_supervisor")
