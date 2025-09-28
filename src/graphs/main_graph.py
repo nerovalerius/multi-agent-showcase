@@ -351,6 +351,8 @@ class MultiAgentGraphFactory():
     ###################################
     async def security_analyst_node(self, state: State) -> Command[Literal["supervisor"]]:
         """Analyze vulnerability data given by the Security Fetcher and produce insights."""
+        print("DEBUG: security_analyst")
+        print("DEBUG:          |")
         result = await self.security_analyst_agent.ainvoke(state)
         return Command(
             update={
