@@ -6,8 +6,7 @@ from typing import Literal
 from typing_extensions import TypedDict
 
 from guardrails import AsyncGuard
-from guardrails.hub import ToxicLanguage
-from guardrails.hub import ProfanityFree
+from guardrails.hub import ToxicLanguage, BanList, ProfanityFree
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
@@ -19,7 +18,6 @@ from langgraph.graph import StateGraph, START, END, MessagesState
 from src.tools.retrievers import RetrieverFactory
 from src.tools.mcp_servers import MCPClientFactory
 from src.prompts.prompts import PromptsFactory
-from src.tools.guardrails import BlockTerms
 
 root_dir = Path(__file__).resolve().parents[2]
 env_path = root_dir / ".env"
@@ -34,8 +32,6 @@ load_dotenv(dotenv_path=env_path, override=True)
 #####################################
 Traceloop.init(app_name="multi-agent-showcase")
 
-# TODO: Guardrails einbauen
-# TODO: fetcher soll die dynatrace_documentation maximal 2 mal aufrufen
 
 class State(MessagesState):
     next: str
@@ -53,7 +49,7 @@ class MultiAgentGraphFactory():
         self.guard = AsyncGuard().use_many(
             ToxicLanguage(threshold=0.5),
             ProfanityFree(),
-            BlockTerms(["datadog", "data dog"])
+            BanList(banned_words=['data dog','datadog', "data-dog", "bomb"])
         )
 
     async def init_tools_and_agents(self) -> None:
