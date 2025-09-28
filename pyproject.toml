@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "gradio>=5.47.0",
+    "guardrails-ai>=0.6.7",
     "langchain>=0.3.27",
     "langchain-community>=0.3.29",
     "langchain-mcp>=0.2.1",

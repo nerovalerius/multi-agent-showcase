@@ -12,11 +12,11 @@ class PromptsFactory:
            * security → Security Team (vulnerabilities, compliance, security scans)
            * devops → DevOps Team (CI/CD, deployments, SLO/SLI, error budgets, canary analysis,
              rollback/promotion decisions, IaC remediation, alert optimization)
-        2. If the request requires multiple domains (e.g. problems + telemetry), you may call more than one team,
-           but each team only once.
+        2. If the request requires multiple domains, call one team after another.
         3. If you have output from multiple Teams, summarize and combine the outputs for the user.
         4. If you have output from only one Team, return it directly without summarizing.
-        5. Once the necessary teams have responded, terminate by routing to FINISH to indicate completion.
+        5. DO NOT call a team twice, ONLY call each team at most ONCE per user request.
+        6. Once the necessary teams have responded, terminate by routing to FINISH to indicate completion.
 
         RULES:
         - Use your teams to answer the user requests.
@@ -58,6 +58,7 @@ class PromptsFactory:
         - Only extend your search TWICE and only IF you need to.
         - DO NOT try to fetch SECURITY, VULNERABILITY or PROBLEMS, ONLY FETCH LOGS and TELEMETRY!
         - IF Verify DQL throws an ERROR, then run Generate DQL  before you try Verify DQL again.
+        - Try verify DQL until you get a working DQL Query.
         - ONLY Send one Request to the MCP Server, DO NOT put multiple requests into one Query!
 
         WORKFLOW:
@@ -67,7 +68,7 @@ class PromptsFactory:
         3. Run verify_dql to verify your queries.
         4. Run execute_dql to get the results
         5. Expand timeframe if no data, then run 2,3,4 again, but ONLY ONCE!
-        6. IF there is any TELEMETRY / LOG Data then immediately return to supervisor.
+        6. IF there is any valid TELEMETRY / LOG Data then immediately return to supervisor.
         7. IF there is no data at the absolute end, return to supervisor.
 
         Return format:
@@ -118,7 +119,7 @@ class PromptsFactory:
         WORKFLOW:
         1. CALL problems_fetcher ONCE, DO NOT CALL IT TWICE!
         2. After problems_fetcher returns, immediately call problems_analyst ONCE.
-        3. After problems_analyst returns, immediately return FINISH.
+        3. ALWAYS After problems_analyst returns, immediately return FINISH, regardless if there is any result or not.
 
         Output:
         - Only return the next worker name (problems_fetcher or problems_analyst) or FINISH.
@@ -142,7 +143,7 @@ class PromptsFactory:
         1. ALWAYS start with `dynatrace_documentation` to gather rules, syntax,
         or examples that might be relevant to the request.
         2. Run list_problems
-        3. IF there is any PROBLEMS Data then immediately return to supervisor.
+        3. IF there is any valid PROBLEMS Data then immediately return to supervisor.
         4. IF there is no data at the absolute end, return to supervisor.
 
         Return format:
@@ -194,8 +195,8 @@ class PromptsFactory:
         WORKFLOW:
         1. CALL security_fetcher ONCE.
         2. After security_fetcher returns, immediately call security_analyst ONCE.
-        3. After security_analyst returns, immediately return FINISH.
-
+        3. ALWAYS After security_analyst returns, immediately return FINISH, regardless if there is any result or not.
+        
         Output:
         - Only return the next worker name (security_fetcher or security_analyst) or FINISH.
         """
@@ -218,7 +219,7 @@ class PromptsFactory:
         1. ALWAYS start with `dynatrace_documentation` to gather rules, syntax,
         or examples that might be relevant to the request.
         2. Run list_vulnerabilities
-        3. IF there is any VULNERABILITY / SECURITY Data then immediately return to supervisor.
+        3. IF there is any valid VULNERABILITY / SECURITY Data then immediately return to supervisor.
         4. IF there is no data at the absolute end, return to supervisor.
 
         Return format:
@@ -270,7 +271,7 @@ class PromptsFactory:
         WORKFLOW:
         1. CALL devops_fetcher ONCE.
         2. After devops_fetcher returns, immediately call devops_analyst ONCE.
-        3. After devops_analyst returns, immediately return FINISH.
+        3. ALWAYS After devops_analyst returns, immediately return FINISH, regardless if there is any result or not.
 
         OUTPUT:
         - Only return the next worker name (devops_fetcher or devops_analyst) or FINISH.

@@ -3,7 +3,11 @@ from dotenv import load_dotenv
 from traceloop.sdk import Traceloop
 
 from typing import Literal
-from typing_extensions import TypedDict, NotRequired
+from typing_extensions import TypedDict
+
+from guardrails import AsyncGuard
+from guardrails.hub import ToxicLanguage
+from guardrails.hub import ProfanityFree
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
@@ -53,6 +57,10 @@ class MultiAgentGraphFactory():
         self.mcp_tools = None
         self.retriever_tool = None
         self.tools = None
+        self.guard = AsyncGuard().use_many(
+            ToxicLanguage(threshold=0.5),
+            ProfanityFree()
+        )
 
     async def init_tools_and_agents(self) -> None:
         """Initialize all tools used in the graph."""
@@ -137,6 +145,27 @@ class MultiAgentGraphFactory():
         async def supervisor_node(state: State) -> Command[Literal[*members, "__end__"]]:
             print(f"DEBUG: {name}")
             print("DEBUG:          |")
+            
+            last_msg = state["messages"][-1]
+            
+            if getattr(last_msg, "type", None) == "human":
+                try:
+                    await self.guard.validate(last_msg.content)
+                except Exception as e:
+                    print(f"DEBUG: Guardrails validation error: {e}")
+                    return Command(
+                        goto=END,
+                        update={
+                           "messages": [
+                                AIMessage(
+                                    content="Sorry, i cannot process that request. I am a Dynatrace AI assistant. How can I help you?",
+                                    name="guardrails",
+                                )
+                            ],
+                            "next": "FINISH",
+                        },
+                    )
+                    
             messages = [{"role": "system", "content": system_prompt}] + state["messages"]
             response = await llm.with_structured_output(Router).ainvoke(messages)
             nxt = response["next"]
