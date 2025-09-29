@@ -34,20 +34,15 @@ class PromptsFactory:
 
         RULES:
         - You only decide which worker to call.
-        - If there is no telemetry-related request, reply exactly: FINISH.
         - Avoid infinite loops at all costs. Once you get results from the analyst: FINISH.
-        - Do not recommend next steps.
-        - DO NOT try handle SECURITY, VULNERABILITY or PROBLEM topics.
-        - IF No telemetry data found, then FINISH.
-        - IF telemetry data found, then FINISH after analyst.
+        - If you are asked for questions on how to continue, but already got results from the analyst: FINISH.
+        - DO NOT try handle SECURITY, DEVOPS or PROBLEM topics.
+        - If you have telemetry results (No logs found is also a result), then FINISH after analyst.
 
         WORKFLOW:
         1. CALL telemetry_fetcher ONCE.
         2. After telemetry_fetcher returns, immediately call telemetry_analyst ONCE.
-        3. After telemetry_analyst returns, immediately return FINISH.
-
-        OUTPUT:
-        - Only return the next worker name (telemetry_fetcher or telemetry_analyst) or FINISH.
+        3. After telemetry_analyst returns with or without problems results, return FINISH.
         """
 
     @staticmethod
@@ -114,20 +109,16 @@ class PromptsFactory:
         RULES:
         - You only decide which worker to call.
         - You are NOT ALLOWED to call the fetcher or the analyst more than once.
-        - If there is no problem-related request, reply exactly: FINISH.
         - Avoid infinite loops at all costs.
         - Do not recommend next steps.
-        - DO NOT try handle SECURITY, VULNERABILITY or TELEMETRY topics.
-        - IF No problems found, then FINISH.
-        - IF problems found, then FINISH after analyst.
+        - DO NOT try handle TELEMETRY, SECURITY or PROBLEMS.
+        - If you have problems results (No problems found  is also a result), then FINISH after analyst.
+        - If you are asked for questions on how to continue, but already got results from the analyst: FINISH.
 
         WORKFLOW:
         1. CALL problems_fetcher ONCE.
         2. After problems_fetcher returns, immediately call problems_analyst ONCE.
-        3. After problems_analyst returns, immediately return FINISH.
-
-        Output:
-        - Only return the next worker name (problems_fetcher or problems_analyst) or FINISH.
+        3. After problems_analyst returns with or without problems results, return FINISH.
         """
 
     @staticmethod
@@ -192,20 +183,16 @@ class PromptsFactory:
         RULES:
         - You only decide which worker to call.
         - You are NOT ALLOWED to call the fetcher or the analyst more than once.
-        - If there is no security-related request, reply exactly: FINISH.
         - Avoid infinite loops at all costs.
         - Do not recommend next steps.
-        - DO NOT try handle TELEMETRY or PROBLEMS.
-        - IF No security data found, then FINISH.
-        - IF security data found, then FINISH after analyst.
+        - DO NOT try handle TELEMETRY, DEVOPS or PROBLEMS.
+        - If you have seucrity results (No vulnerabilities found is also a result), then FINISH after analyst.
+        - If you are asked for questions on how to continue, but already got results from the analyst: FINISH.
 
         WORKFLOW:
         1. CALL security_fetcher ONCE.
         2. After security_fetcher returns, immediately call security_analyst ONCE.
-        3. ALWAYS After security_analyst returns, immediately return FINISH, regardless if there is any result or not.
-        
-        Output:
-        - Only return the next worker name (security_fetcher or security_analyst) or FINISH.
+        3. After security_analyst returns with or without security results, return FINISH.
         """
     
     @staticmethod
@@ -270,20 +257,17 @@ class PromptsFactory:
 
         RULES:
         - You only decide which worker to call.
-        - If there is no DevOps/SRE-related request, reply exactly: FINISH.
         - Avoid infinite loops at all costs. Once you get results from the analyst: FINISH.
         - Do not recommend next steps.
         - DO NOT try to handle SECURITY, TELEMETRY or PROBLEMS topics.
-        - IF No devops data found, then FINISH.
-        - IF devops data found, then FINISH after analyst.
+        - DO NOT try handle TELEMETRY, SECURITY or PROBLEMS.
+        - If you have devops results (Nothing found is also a result), then FINISH after analyst.
+        - If you are asked for questions on how to continue, but already got results from the analyst: FINISH.
 
         WORKFLOW:
         1. CALL devops_fetcher ONCE.
         2. After devops_fetcher returns, immediately call devops_analyst ONCE.
-        3. ALWAYS After devops_analyst returns, immediately return FINISH, regardless if there is any result or not.
-
-        OUTPUT:
-        - Only return the next worker name (devops_fetcher or devops_analyst) or FINISH.
+        3. After devops_analyst returns with or without devops results, return FINISH.
         """
 
     @staticmethod
