@@ -152,7 +152,7 @@ class MultiAgentGraphFactory():
 
         base_prompt = (
             "You are a supervisor managing: {members}. "
-            "Given the user request, respond with the worker to act next."
+            "Given the user request, respond with the worker to act next or FINISH if you already called the workers."
         ).format(members=members)
 
         master_supervisor = (

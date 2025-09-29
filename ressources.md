@@ -37,12 +37,17 @@ give me a status update on deployment/SRE (SLOs, health gates, error budgets)
 ## Long examples
 ```
 Give me the environment status:
-- open problems 
-- telemetry (logs/metrics/traces) (only the last 3 logs)
-- vulnerabilities
-- deployment/SRE status (SLOs, health gates)
+telemetry (only the last 3 logs)
+vulnerabilities
+```
 
-Provide one consolidated summary at the end.
+### Very long examples
+```
+Give me the environment status:
+- open problems 
+- telemetry  (only the last 3 logs)
+- vulnerabilities
+- deployment/SRE status
 ```
 
 ```
