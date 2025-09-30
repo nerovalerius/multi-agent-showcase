@@ -75,26 +75,26 @@ Workflow: Fetcher → Analyst → FINISH
    Create a file named `.env` at the repository root with:
 
    env
-   # OpenAI
+   ### OpenAI
    OPENAI_API_KEY=sk-...
 
-   # Dynatrace
+   ### Dynatrace
    DT_ENVIRONMENT=https://<env>.apps.dynatrace.com
    DT_PLATFORM_TOKEN=dtp_...
    DT_ACCOUNT_PW=
 
-   # Tracing / Observability
+   ### Tracing / Observability
    TRACELOOP_BASE_URL=https://<tenant>.live.dynatrace.com/api/v2/otlp
    TRACELOOP_HEADERS=Authorization=Api-Token <YOUR_TOKEN>
    OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta
 
-   # Optional: LangSmith
+   ### Optional: LangSmith
    LANGSMITH_TRACING=
    LANGSMITH_ENDPOINT=
    LANGSMITH_API_KEY=
    LANGSMITH_PROJECT=
 
-   # Optional
+   ### Optional
    GUARDRAILS_API_KEY=
 
 4. **Start Gradio showcase**
@@ -107,31 +107,6 @@ Workflow: Fetcher → Analyst → FINISH
 powershell
 scripts\start_cli_showcase.bat
 
-## Repository layout
-.env
-.gitignore
-dynatrace_rules/
-dynatrace_rules_index/
-scripts/
-  install_guardrails.bat
-  start_cli_showcase.bat
-  start_dynatrace_mcp.bat
-  start_gradio_showcase.bat
-src/
-  apps/
-    cli_chat.py
-    gradio_chat.py
-  graphs/
-    main_graph.py
-  prompts/
-    prompts.py
-  tools/
-    mcp_servers.py
-    retrievers.py
-  utils/
-    __init__.py
-.venv/
-
 ## Scripts
 - scripts/install_guardrails.bat — install Guardrails and hub deps
 - scripts/start_gradio_showcase.bat — launch the Gradio UI
@@ -143,6 +118,3 @@ src/
 - Dynatrace auth errors → verify DT_ENVIRONMENT and DT_PLATFORM_TOKEN.
 - Guardrails hub errors → rerun scripts\install_guardrails.bat.
 - FAISS index issues → delete dynatrace_rules_index/ and restart to rebuild.
-
-## License
-TBD
