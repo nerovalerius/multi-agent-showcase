@@ -65,50 +65,67 @@ Workflow: Fetcher → Analyst → FINISH
 ## Quickstart
 
 1. **Initialize project**
+   ```
    uv init
+   ```
 
-2. **Install Guardrails**
-   powershell
+3. **Install Guardrails**
+   ```
    scripts\install_guardrails.bat
+   ```
+   
 
-3. **Create `.env` in repo root and fill values**
+5. **Create `.env` in repo root and fill values**
    Create a file named `.env` at the repository root with:
 
    env
    ### OpenAI
+   ```
    OPENAI_API_KEY=sk-...
-
+   ```
    ### Dynatrace
+   ```
    DT_ENVIRONMENT=https://<env>.apps.dynatrace.com
    DT_PLATFORM_TOKEN=dtp_...
    DT_ACCOUNT_PW=
+   ```
 
    ### Tracing / Observability
+   ```
    TRACELOOP_BASE_URL=https://<tenant>.live.dynatrace.com/api/v2/otlp
    TRACELOOP_HEADERS=Authorization=Api-Token <YOUR_TOKEN>
    OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta
+   ```
 
    ### LangSmith
+   ```
    LANGSMITH_TRACING=
    LANGSMITH_ENDPOINT=
    LANGSMITH_API_KEY=
    LANGSMITH_PROJECT=
+   ```
 
    ### Guardrails
+   ```
    GUARDRAILS_API_KEY=
+   ```
 
-4. **Start Gradio showcase**
-   powershell
+7. **Start Gradio showcase**
+   ```
    scripts\start_gradio_showcase.bat
-
+   ```
+   
    Open the printed local URL, default http://127.0.0.1:7860.
 
 ### Optional: start CLI
-powershell
+```
 scripts\start_cli_showcase.bat
+```
 
 ## Scripts
+```
 - scripts/install_guardrails.bat — install Guardrails and hub deps
 - scripts/start_gradio_showcase.bat — launch the Gradio UI
 - scripts/start_cli_showcase.bat — launch the CLI
 - scripts/start_dynatrace_mcp.bat — helper to run the Dynatrace MCP server
+```
