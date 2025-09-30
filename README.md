@@ -123,9 +123,7 @@ scripts\start_cli_showcase.bat
 ```
 
 ## Scripts
-```
 - scripts/install_guardrails.bat — install Guardrails and hub deps
 - scripts/start_gradio_showcase.bat — launch the Gradio UI
 - scripts/start_cli_showcase.bat — launch the CLI
 - scripts/start_dynatrace_mcp.bat — helper to run the Dynatrace MCP server
-```
