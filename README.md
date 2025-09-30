@@ -35,19 +35,13 @@ Workflow: Fetcher → Analyst → FINISH
 - Analyst: evaluates health gates, canary rollbacks, error budget status, suggests remediation.
 
 ### 3. Tools
-- Dynatrace MCP server:
-  - dynatrace_documentation
-  - generate_dql_from_natural_language
-  - verify_dql
-  - execute_dql
-  - list_problems
-  - list_vulnerabilities
-- Retriever tools (FAISS index from dynatrace_rules):
-  - telemetry, problems, security, devops, common
+- MCP Tools: Dynatrace MCP
+- Retrievers
+- FAISS index from dynatrace LLM rules 
 
 ### 4. Guardrails
 - Active on all user input.
-- Blocks toxic language, profanity, banned terms (e.g. datadog, bomb).
+- Blocks toxic language, profanity, banned terms.
 - On violation, returns safe response instead of executing requests.
 
 ### 5. Execution Flow
