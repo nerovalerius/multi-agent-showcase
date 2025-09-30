@@ -7,7 +7,7 @@ LLM-driven multi-agent system for Telemetry, Problems, Security, and DevOps. Orc
 
 The system is organized into three layers: a top-level supervisor and domain-specific teams.
 
-![Architecture](https://github.com/nerovalerius/multi-agent-showcase/imgs/blob/main/imgs/architecture.jpg?raw=true)
+![Architecture](https://github.com/nerovalerius/multi-agent-showcase/blob/main/imgs/architecture.jpg?raw=true)
 
 ### 1. Teams Supervisor
 - Routes user requests to one or more domain teams: Telemetry, Problems, Security, DevOps.
