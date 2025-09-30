@@ -88,13 +88,13 @@ Workflow: Fetcher → Analyst → FINISH
    TRACELOOP_HEADERS=Authorization=Api-Token <YOUR_TOKEN>
    OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta
 
-   ### Optional: LangSmith
+   ### LangSmith
    LANGSMITH_TRACING=
    LANGSMITH_ENDPOINT=
    LANGSMITH_API_KEY=
    LANGSMITH_PROJECT=
 
-   ### Optional
+   ### Guardrails
    GUARDRAILS_API_KEY=
 
 4. **Start Gradio showcase**
@@ -112,9 +112,3 @@ scripts\start_cli_showcase.bat
 - scripts/start_gradio_showcase.bat — launch the Gradio UI
 - scripts/start_cli_showcase.bat — launch the CLI
 - scripts/start_dynatrace_mcp.bat — helper to run the Dynatrace MCP server
-
-## Troubleshooting
-- npx not found → install Node.js 18+.
-- Dynatrace auth errors → verify DT_ENVIRONMENT and DT_PLATFORM_TOKEN.
-- Guardrails hub errors → rerun scripts\install_guardrails.bat.
-- FAISS index issues → delete dynatrace_rules_index/ and restart to rebuild.
